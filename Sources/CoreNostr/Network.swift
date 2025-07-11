@@ -207,12 +207,13 @@ public enum ConnectionState: Sendable, Equatable {
 /// }
 /// ```
 @MainActor
-public class RelayConnection: ObservableObject {
+@Observable
+public class RelayConnection {
     /// The current connection state
-    @Published public private(set) var state: ConnectionState = .disconnected
+    public private(set) var state: ConnectionState = .disconnected
     
     /// The URL of the connected relay
-    @Published public private(set) var url: URL?
+    public private(set) var url: URL?
     
     private var webSocketTask: URLSessionWebSocketTask?
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
@@ -238,26 +239,20 @@ public class RelayConnection: ObservableObject {
         
         self.url = url
         state = .connecting
+        let session = URLSession.shared
+        webSocketTask = session.webSocketTask(with: url)
         
-        do {
-            let session = URLSession.shared
-            webSocketTask = session.webSocketTask(with: url)
-            
-            // Create the message stream
-            let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
-            messageStream = stream
-            messageContinuation = continuation
-            
-            webSocketTask?.resume()
-            
-            // Start listening for messages
-            await startListening()
-            
-            state = .connected
-        } catch {
-            state = .error("Failed to connect: \(error.localizedDescription)")
-            throw NostrError.networkError("Failed to connect: \(error.localizedDescription)")
-        }
+        // Create the message stream
+        let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
+        messageStream = stream
+        messageContinuation = continuation
+        
+        webSocketTask?.resume()
+        
+        // Start listening for messages
+        await startListening()
+        
+        state = .connected
     }
     
     /// Disconnects from the relay and cleans up resources.
@@ -299,18 +294,15 @@ public class RelayConnection: ObservableObject {
     /// Starts listening for messages from the WebSocket.
     private func startListening() async {
         guard let webSocketTask = webSocketTask else { return }
-        
-        Task {
-            while state == .connected {
-                do {
-                    let message = try await webSocketTask.receive()
-                    await handleWebSocketMessage(message)
-                } catch {
-                    await MainActor.run {
-                        self.state = .error("Connection error: \(error.localizedDescription)")
-                    }
-                    break
+        while state == .connected {
+            do {
+                let message = try await webSocketTask.receive()
+                await handleWebSocketMessage(message)
+            } catch {
+                await MainActor.run {
+                    self.state = .error("Connection error: \(error.localizedDescription)")
                 }
+                break
             }
         }
     }
@@ -359,10 +351,11 @@ public class RelayConnection: ObservableObject {
 /// }
 /// ```
 @MainActor
-public class RelayPool: ObservableObject {
+@Observable
+public class RelayPool {
     /// Dictionary of relay URLs to their connections
     /// Dictionary of relay URLs to their connections
-    @Published public private(set) var connections: [URL: RelayConnection] = [:]
+    public private(set) var connections: [URL: RelayConnection] = [:]
     
     /// Creates a new relay pool.
     public init() {}

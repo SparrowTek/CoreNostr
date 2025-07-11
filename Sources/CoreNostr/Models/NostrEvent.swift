@@ -1,37 +1,18 @@
+//
+//  NostrEvent.swift
+//  CoreNostr
+//
+//  Created by Thomas Rademaker on 7/11/25.
+//
+
 import Foundation
 import Crypto
 
-// MARK: - Type Aliases
-
-/// A unique identifier for a NOSTR event, represented as a 64-character hexadecimal string.
-/// 
-/// Event IDs are calculated by taking the SHA256 hash of the serialized event data
-/// according to NIP-01 specification.
-public typealias EventID = String
-
-/// A NOSTR public key, represented as a 64-character hexadecimal string.
-/// 
-/// Public keys are derived from secp256k1 private keys and serve as user identities
-/// in the NOSTR protocol.
-public typealias PublicKey = String
-
-/// A NOSTR private key, represented as a 64-character hexadecimal string.
-/// 
-/// Private keys are used to sign events and should be kept secret.
-public typealias PrivateKey = String
-
-/// A Schnorr signature over secp256k1, represented as a 128-character hexadecimal string.
-/// 
-/// Signatures are created by signing the serialized event data with the corresponding private key.
-public typealias Signature = String
-
-// MARK: - NostrEvent
-
 /// A NOSTR event following the NIP-01 specification.
-/// 
+///
 /// Events are the fundamental data structure in NOSTR, containing user-generated content
 /// along with metadata and cryptographic signatures for verification.
-/// 
+///
 /// ## Example
 /// ```swift
 /// let event = NostrEvent(
@@ -41,7 +22,7 @@ public typealias Signature = String
 ///     content: "Hello, NOSTR!"
 /// )
 /// ```
-/// 
+///
 /// - Note: Events must be signed before being published to relays.
 public struct NostrEvent: Codable, Hashable, Sendable {
     /// The unique identifier for this event, calculated as SHA256 hash of serialized event data.
@@ -54,7 +35,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     public let createdAt: Int64
     
     /// The event kind, determining how the event should be interpreted.
-    /// 
+    ///
     /// Common kinds include:
     /// - `0`: Set metadata
     /// - `1`: Text note
@@ -62,7 +43,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     public let kind: Int
     
     /// Tags provide additional metadata about the event.
-    /// 
+    ///
     /// Each tag is an array of strings where the first element indicates the tag type:
     /// - `["e", "event-id"]` - References another event
     /// - `["p", "pubkey"]` - References a user
@@ -81,7 +62,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     }
     
     /// Creates a complete NOSTR event with all required fields.
-    /// 
+    ///
     /// - Parameters:
     ///   - id: The unique event identifier
     ///   - pubkey: The author's public key
@@ -109,10 +90,10 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     }
     
     /// Creates an unsigned NOSTR event ready for signing.
-    /// 
+    ///
     /// This initializer creates an event without an ID or signature,
     /// which must be added later through the signing process.
-    /// 
+    ///
     /// - Parameters:
     ///   - pubkey: The author's public key
     ///   - createdAt: Creation timestamp (defaults to current time)
@@ -136,10 +117,10 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     }
     
     /// Serializes the event for signing according to NIP-01.
-    /// 
+    ///
     /// The serialization format is a JSON array containing:
     /// `[0, pubkey, created_at, kind, tags, content]`
-    /// 
+    ///
     /// - Returns: JSON string representation for signing
     public func serializedForSigning() -> String {
         let array: [Any] = [
@@ -160,7 +141,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     }
     
     /// Calculates the event ID as SHA256 hash of the serialized event.
-    /// 
+    ///
     /// - Returns: 64-character hexadecimal event ID
     public func calculateId() -> EventID {
         let serialized = serializedForSigning()
@@ -170,7 +151,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     }
     
     /// Creates a new event with the provided signature and calculated ID.
-    /// 
+    ///
     /// - Parameter signature: The Schnorr signature for this event
     /// - Returns: A complete, signed event ready for publishing
     public func withSignature(_ signature: Signature) -> NostrEvent {
@@ -184,139 +165,5 @@ public struct NostrEvent: Codable, Hashable, Sendable {
             content: content,
             sig: signature
         )
-    }
-}
-
-// MARK: - Event Kinds
-
-/// Standardized event kinds defined by NIP-01.
-/// 
-/// Event kinds determine how the event content should be interpreted by clients.
-public enum EventKind: Int, CaseIterable, Sendable {
-    /// Set metadata about the user (profile information)
-    case setMetadata = 0
-    
-    /// Text note (tweet-like message)
-    case textNote = 1
-    
-    /// Recommend a relay server
-    case recommendServer = 2
-    
-    /// Human-readable description of the event kind.
-    public var description: String {
-        switch self {
-        case .setMetadata: return "Set Metadata"
-        case .textNote: return "Text Note"
-        case .recommendServer: return "Recommend Server"
-        }
-    }
-}
-
-// MARK: - Filter
-
-/// A filter for requesting specific events from relays.
-/// 
-/// Filters allow clients to request only events that match certain criteria,
-/// such as specific authors, event kinds, or time ranges.
-/// 
-/// ## Example
-/// ```swift
-/// let filter = Filter(
-///     authors: ["user-pubkey"],
-///     kinds: [1], // Text notes only
-///     limit: 20
-/// )
-/// ```
-public struct Filter: Codable, Sendable {
-    /// Filter by specific event IDs
-    public var ids: [EventID]?
-    
-    /// Filter by author public keys
-    public var authors: [PublicKey]?
-    
-    /// Filter by event kinds
-    public var kinds: [Int]?
-    
-    /// Filter events created after this timestamp
-    public var since: Int64?
-    
-    /// Filter events created before this timestamp
-    public var until: Int64?
-    
-    /// Maximum number of events to return
-    public var limit: Int?
-    
-    /// Filter by referenced event IDs ("e" tags)
-    public var e: [String]?
-    
-    /// Filter by referenced public keys ("p" tags)
-    public var p: [String]?
-    
-    private enum CodingKeys: String, CodingKey {
-        case ids, authors, kinds, since, until, limit
-        case e = "#e"
-        case p = "#p"
-    }
-    
-    /// Creates a filter with the specified criteria.
-    /// 
-    /// - Parameters:
-    ///   - ids: Specific event IDs to match
-    ///   - authors: Author public keys to match
-    ///   - kinds: Event kinds to match
-    ///   - since: Minimum creation time
-    ///   - until: Maximum creation time
-    ///   - limit: Maximum number of events to return
-    ///   - e: Referenced event IDs to match
-    ///   - p: Referenced public keys to match
-    public init(
-        ids: [EventID]? = nil,
-        authors: [PublicKey]? = nil,
-        kinds: [Int]? = nil,
-        since: Date? = nil,
-        until: Date? = nil,
-        limit: Int? = nil,
-        e: [String]? = nil,
-        p: [String]? = nil
-    ) {
-        self.ids = ids
-        self.authors = authors
-        self.kinds = kinds
-        self.since = since.map { Int64($0.timeIntervalSince1970) }
-        self.until = until.map { Int64($0.timeIntervalSince1970) }
-        self.limit = limit
-        self.e = e
-        self.p = p
-    }
-}
-
-// MARK: - Errors
-
-/// Errors that can occur when working with NOSTR events and networking.
-public enum NostrError: Error, LocalizedError, Sendable {
-    /// An event failed validation or contains invalid data
-    case invalidEvent(String)
-    
-    /// A cryptographic operation failed
-    case cryptographyError(String)
-    
-    /// A network operation failed
-    case networkError(String)
-    
-    /// JSON serialization or deserialization failed
-    case serializationError(String)
-    
-    /// Localized description of the error.
-    public var errorDescription: String? {
-        switch self {
-        case .invalidEvent(let message):
-            return "Invalid event: \(message)"
-        case .cryptographyError(let message):
-            return "Cryptography error: \(message)"
-        case .networkError(let message):
-            return "Network error: \(message)"
-        case .serializationError(let message):
-            return "Serialization error: \(message)"
-        }
     }
 }
