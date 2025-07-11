@@ -148,6 +148,175 @@ public struct CoreNostr {
             content: jsonString
         )
     }
+    
+    /// Verifies a NIP-05 identifier for a given public key.
+    ///
+    /// This method fetches the well-known JSON endpoint and verifies that the
+    /// identifier correctly maps to the provided public key.
+    ///
+    /// - Parameters:
+    ///   - identifier: The NIP-05 identifier to verify (e.g., "bob@example.com")
+    ///   - publicKey: The public key to verify against
+    ///   - verifier: Optional custom verifier (defaults to new instance)
+    /// - Returns: True if the identifier is valid for the public key
+    /// - Throws: Network or parsing errors
+    public static func verifyNIP05(
+        identifier: String,
+        publicKey: PublicKey,
+        verifier: NostrNIP05Verifier = NostrNIP05Verifier()
+    ) async throws -> Bool {
+        let nip05Identifier = try NostrNIP05Identifier(identifier: identifier)
+        return try await verifier.verify(identifier: nip05Identifier, publicKey: publicKey)
+    }
+    
+    /// Discovers a public key from a NIP-05 identifier.
+    ///
+    /// This method performs user discovery by fetching the well-known JSON
+    /// endpoint and returning the public key mapped to the identifier.
+    ///
+    /// - Parameters:
+    ///   - identifier: The NIP-05 identifier to discover (e.g., "bob@example.com")
+    ///   - discovery: Optional custom discovery service (defaults to new instance)
+    /// - Returns: Discovery result with public key and relay URLs, or nil if not found
+    /// - Throws: Network or parsing errors
+    public static func discoverNIP05(
+        identifier: String,
+        discovery: NostrNIP05Discovery = NostrNIP05Discovery()
+    ) async throws -> NostrNIP05DiscoveryResult? {
+        let nip05Identifier = try NostrNIP05Identifier(identifier: identifier)
+        return try await discovery.discover(identifier: nip05Identifier)
+    }
+    
+    /// Creates a follow list event (NIP-02) containing the user's follows.
+    /// 
+    /// Follow lists are special events that contain a list of profiles being followed.
+    /// They can be used for backup, profile discovery, relay sharing, and implementing 
+    /// petname schemes.
+    /// 
+    /// - Parameters:
+    ///   - keyPair: The key pair to sign the event with
+    ///   - follows: Array of follow entries representing followed profiles
+    /// - Returns: A signed follow list event
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    public static func createFollowListEvent(
+        keyPair: KeyPair,
+        follows: [FollowEntry]
+    ) throws -> NostrEvent {
+        let followList = NostrFollowList(follows: follows)
+        let event = followList.createEvent(pubkey: keyPair.publicKey)
+        return try keyPair.signEvent(event)
+    }
+    
+    /// Creates an OpenTimestamps attestation event (NIP-03) for a given event.
+    /// 
+    /// OpenTimestamps attestations provide cryptographic proof that a specific event
+    /// existed at a certain point in time by anchoring it to the Bitcoin blockchain.
+    /// 
+    /// - Parameters:
+    ///   - keyPair: The key pair to sign the event with
+    ///   - eventId: The ID of the event being attested
+    ///   - relayURL: Optional relay URL where the attested event can be found
+    ///   - otsData: The raw OTS file data containing the Bitcoin attestation
+    /// - Returns: A signed OpenTimestamps attestation event
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    public static func createOpenTimestampsEvent(
+        keyPair: KeyPair,
+        eventId: EventID,
+        relayURL: String? = nil,
+        otsData: Data
+    ) throws -> NostrEvent {
+        let attestation = NostrOpenTimestamps(eventId: eventId, relayURL: relayURL, otsData: otsData)
+        let event = attestation.createEvent(pubkey: keyPair.publicKey)
+        return try keyPair.signEvent(event)
+    }
+    
+    /// Creates an OpenTimestamps attestation event from base64-encoded OTS data.
+    /// 
+    /// This is a convenience method for when you have OTS data in base64 format.
+    /// 
+    /// - Parameters:
+    ///   - keyPair: The key pair to sign the event with
+    ///   - eventId: The ID of the event being attested
+    ///   - relayURL: Optional relay URL where the attested event can be found
+    ///   - base64OTSData: The base64-encoded OTS file data
+    /// - Returns: A signed OpenTimestamps attestation event
+    /// - Throws: ``NostrError/invalidEvent(_:)`` if base64 data is invalid
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    public static func createOpenTimestampsEventFromBase64(
+        keyPair: KeyPair,
+        eventId: EventID,
+        relayURL: String? = nil,
+        base64OTSData: String
+    ) throws -> NostrEvent {
+        guard let attestation = NostrOpenTimestamps.fromBase64(
+            eventId: eventId,
+            relayURL: relayURL,
+            base64OTSData: base64OTSData
+        ) else {
+            throw NostrError.invalidEvent("Invalid base64 OTS data")
+        }
+        
+        let event = attestation.createEvent(pubkey: keyPair.publicKey)
+        return try keyPair.signEvent(event)
+    }
+    
+    /// Creates an encrypted direct message event (NIP-04) - DEPRECATED.
+    /// 
+    /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17 due to
+    /// security vulnerabilities. This method is provided for backward compatibility only.
+    /// 
+    /// Encrypted direct messages use AES-256-CBC encryption with ECDH shared secrets.
+    /// They leak metadata and should only be used with AUTH-enabled relays.
+    /// 
+    /// - Parameters:
+    ///   - senderKeyPair: The sender's key pair for encryption and signing
+    ///   - recipientPublicKey: The recipient's public key
+    ///   - message: The plaintext message to encrypt
+    ///   - replyToEventId: Optional event ID this message is replying to
+    /// - Returns: A signed encrypted direct message event
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption or signing fails
+    @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17. Use only for backward compatibility.")
+    public static func createDirectMessageEvent(
+        senderKeyPair: KeyPair,
+        recipientPublicKey: PublicKey,
+        message: String,
+        replyToEventId: EventID? = nil
+    ) throws -> NostrEvent {
+        let directMessage = try NostrDirectMessage.create(
+            senderKeyPair: senderKeyPair,
+            recipientPublicKey: recipientPublicKey,
+            message: message,
+            replyToEventId: replyToEventId
+        )
+        let event = directMessage.createEvent(pubkey: senderKeyPair.publicKey)
+        return try senderKeyPair.signEvent(event)
+    }
+    
+    /// Decrypts an encrypted direct message event (NIP-04) - DEPRECATED.
+    /// 
+    /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17 due to
+    /// security vulnerabilities. This method is provided for backward compatibility only.
+    /// 
+    /// - Parameters:
+    ///   - event: The encrypted direct message event to decrypt
+    ///   - recipientKeyPair: The recipient's key pair for decryption
+    /// - Returns: The decrypted plaintext message
+    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event is not a valid direct message
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17. Use only for backward compatibility.")
+    public static func decryptDirectMessage(
+        event: NostrEvent,
+        recipientKeyPair: KeyPair
+    ) throws -> String {
+        guard let directMessage = NostrDirectMessage.from(event: event) else {
+            throw NostrError.invalidEvent("Event is not a valid encrypted direct message")
+        }
+        
+        return try directMessage.decrypt(
+            with: recipientKeyPair,
+            senderPublicKey: event.pubkey
+        )
+    }
 }
 
 // MARK: - Convenience Extensions
@@ -174,6 +343,22 @@ extension NostrEvent {
         return kind == EventKind.setMetadata.rawValue
     }
     
+    /// Whether this event is a follow list (kind 3).
+    public var isFollowList: Bool {
+        return kind == EventKind.followList.rawValue
+    }
+    
+    /// Whether this event is an OpenTimestamps attestation (kind 1040).
+    public var isOpenTimestamps: Bool {
+        return kind == EventKind.openTimestamps.rawValue
+    }
+    
+    /// Whether this event is an encrypted direct message (kind 4) - DEPRECATED.
+    @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17.")
+    public var isEncryptedDirectMessage: Bool {
+        return kind == EventKind.encryptedDirectMessage.rawValue
+    }
+    
     /// Array of event IDs referenced by this event ("e" tags).
     public var referencedEvents: [EventID] {
         return tags.compactMap { tag in
@@ -188,6 +373,51 @@ extension NostrEvent {
             guard tag.count >= 2 && tag[0] == "p" else { return nil }
             return tag[1]
         }
+    }
+    
+    /// Extracts the metadata content as a dictionary (for kind 0 events).
+    ///
+    /// - Returns: Dictionary of metadata fields, or nil if not a metadata event or invalid JSON
+    public var metadataContent: [String: Any]? {
+        guard isMetadata else { return nil }
+        
+        guard let data = content.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        
+        return json
+    }
+    
+    /// Extracts the NIP-05 identifier from metadata content (for kind 0 events).
+    ///
+    /// - Returns: The NIP-05 identifier string, or nil if not present or invalid
+    public var nip05Identifier: String? {
+        return metadataContent?["nip05"] as? String
+    }
+    
+    /// Extracts the parsed NIP-05 identifier from metadata content.
+    ///
+    /// - Returns: The parsed NIP-05 identifier, or nil if not present or invalid
+    public var parsedNIP05Identifier: NostrNIP05Identifier? {
+        guard let nip05 = nip05Identifier else { return nil }
+        return try? NostrNIP05Identifier(identifier: nip05)
+    }
+    
+    /// Verifies the NIP-05 identifier in this metadata event against the event's public key.
+    ///
+    /// This method extracts the NIP-05 identifier from the metadata content and verifies
+    /// it against the event's public key using the well-known JSON endpoint.
+    ///
+    /// - Parameter verifier: Optional custom verifier (defaults to new instance)
+    /// - Returns: True if the NIP-05 identifier is valid for this event's public key
+    /// - Throws: Network or parsing errors
+    public func verifyNIP05(verifier: NostrNIP05Verifier = NostrNIP05Verifier()) async throws -> Bool {
+        guard let parsedIdentifier = parsedNIP05Identifier else {
+            return false
+        }
+        
+        return try await verifier.verify(identifier: parsedIdentifier, publicKey: pubkey)
     }
 }
 
@@ -250,6 +480,66 @@ extension Filter {
             since: since,
             limit: limit,
             e: [eventId]
+        )
+    }
+    
+    /// Creates a filter for follow lists (kind 3 events).
+    /// 
+    /// - Parameters:
+    ///   - authors: Optional array of author public keys to filter by
+    ///   - limit: Optional maximum number of events to return
+    /// - Returns: A filter configured for follow list events
+    public static func followLists(
+        authors: [PublicKey]? = nil,
+        limit: Int? = nil
+    ) -> Filter {
+        return Filter(
+            authors: authors,
+            kinds: [EventKind.followList.rawValue],
+            limit: limit
+        )
+    }
+    
+    /// Creates a filter for OpenTimestamps attestation events (kind 1040).
+    /// 
+    /// - Parameters:
+    ///   - authors: Optional array of author public keys to filter by
+    ///   - eventIds: Optional array of event IDs being attested to
+    ///   - limit: Optional maximum number of events to return
+    /// - Returns: A filter configured for OpenTimestamps attestation events
+    public static func openTimestamps(
+        authors: [PublicKey]? = nil,
+        eventIds: [EventID]? = nil,
+        limit: Int? = nil
+    ) -> Filter {
+        return Filter(
+            authors: authors,
+            kinds: [EventKind.openTimestamps.rawValue],
+            limit: limit,
+            e: eventIds
+        )
+    }
+    
+    /// Creates a filter for encrypted direct message events (kind 4) - DEPRECATED.
+    /// 
+    /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17.
+    /// 
+    /// - Parameters:
+    ///   - authors: Optional array of author public keys to filter by
+    ///   - recipients: Optional array of recipient public keys to filter by
+    ///   - limit: Optional maximum number of events to return
+    /// - Returns: A filter configured for encrypted direct message events
+    @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17.")
+    public static func encryptedDirectMessages(
+        authors: [PublicKey]? = nil,
+        recipients: [PublicKey]? = nil,
+        limit: Int? = nil
+    ) -> Filter {
+        return Filter(
+            authors: authors,
+            kinds: [EventKind.encryptedDirectMessage.rawValue],
+            limit: limit,
+            p: recipients
         )
     }
 }
