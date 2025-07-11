@@ -2,11 +2,24 @@ import Foundation
 import Combine
 
 // MARK: - Message Types
+
+/// Messages sent from clients to relays.
+/// 
+/// These messages follow the NOSTR protocol specification for client-to-relay communication.
 public enum ClientMessage: Codable, Sendable {
+    /// Publish an event to the relay
     case event(NostrEvent)
+    
+    /// Request events matching the provided filters
     case req(subscriptionId: String, filters: [Filter])
+    
+    /// Close a subscription
     case close(subscriptionId: String)
     
+    /// Encodes the message to JSON format for transmission to relays.
+    /// 
+    /// - Returns: JSON string representation of the message
+    /// - Throws: ``NostrError/serializationError(_:)`` if encoding fails
     public func encode() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -50,14 +63,33 @@ public enum ClientMessage: Codable, Sendable {
     }
 }
 
+/// Messages sent from relays to clients.
+/// 
+/// These messages follow the NOSTR protocol specification for relay-to-client communication.
 public enum RelayMessage: Codable, Sendable {
+    /// An event matching a subscription
     case event(subscriptionId: String, event: NostrEvent)
+    
+    /// Confirmation of event publication
     case ok(eventId: EventID, accepted: Bool, message: String?)
+    
+    /// End of stored events for a subscription
     case eose(subscriptionId: String)
+    
+    /// Subscription was closed by the relay
     case closed(subscriptionId: String, message: String?)
+    
+    /// Notice message from the relay
     case notice(message: String)
+    
+    /// Authentication challenge from the relay
     case auth(challenge: String)
     
+    /// Decodes a relay message from JSON format.
+    /// 
+    /// - Parameter jsonString: JSON string received from relay
+    /// - Returns: Decoded RelayMessage
+    /// - Throws: ``NostrError/serializationError(_:)`` if decoding fails
     public static func decode(from jsonString: String) throws -> RelayMessage {
         guard let data = jsonString.data(using: .utf8),
               let jsonArray = try JSONSerialization.jsonObject(with: data) as? [Any],
@@ -122,10 +154,19 @@ public enum RelayMessage: Codable, Sendable {
 }
 
 // MARK: - Connection State
+
+/// The current state of a relay connection.
 public enum ConnectionState: Sendable, Equatable {
+    /// Not connected to any relay
     case disconnected
+    
+    /// In the process of connecting
     case connecting
+    
+    /// Successfully connected and ready for communication
     case connected
+    
+    /// Connection failed with an error message
     case error(String)
     
     public static func == (lhs: ConnectionState, rhs: ConnectionState) -> Bool {
@@ -141,15 +182,43 @@ public enum ConnectionState: Sendable, Equatable {
 }
 
 // MARK: - RelayConnection
+
+/// Manages a WebSocket connection to a single NOSTR relay.
+/// 
+/// RelayConnection handles the low-level WebSocket communication with a relay,
+/// including connection management, message sending, and receiving.
+/// 
+/// ## Usage
+/// ```swift
+/// let relay = RelayConnection()
+/// try await relay.connect(to: URL(string: "wss://relay.example.com")!)
+/// 
+/// // Send a message
+/// try await relay.send(.event(signedEvent))
+/// 
+/// // Listen for responses
+/// for await message in relay.messages {
+///     switch message {
+///     case .event(let subId, let event):
+///         print("Received event: \(event.content)")
+///     default:
+///         break
+///     }
+/// }
+/// ```
 @MainActor
 public class RelayConnection: ObservableObject {
+    /// The current connection state
     @Published public private(set) var state: ConnectionState = .disconnected
+    
+    /// The URL of the connected relay
     @Published public private(set) var url: URL?
     
     private var webSocketTask: URLSessionWebSocketTask?
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
     private var messageStream: AsyncStream<RelayMessage>?
     
+    /// Creates a new relay connection.
     public init() {}
     
     deinit {
@@ -158,6 +227,10 @@ public class RelayConnection: ObservableObject {
         }
     }
     
+    /// Connects to a NOSTR relay.
+    /// 
+    /// - Parameter url: The WebSocket URL of the relay
+    /// - Throws: ``NostrError/networkError(_:)`` if connection fails
     public func connect(to url: URL) async throws {
         guard state == .disconnected else {
             throw NostrError.networkError("Already connected or connecting")
@@ -187,6 +260,7 @@ public class RelayConnection: ObservableObject {
         }
     }
     
+    /// Disconnects from the relay and cleans up resources.
     public func disconnect() async {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
@@ -197,6 +271,10 @@ public class RelayConnection: ObservableObject {
         url = nil
     }
     
+    /// Sends a message to the connected relay.
+    /// 
+    /// - Parameter message: The message to send
+    /// - Throws: ``NostrError/networkError(_:)`` if sending fails or not connected
     public func send(_ message: ClientMessage) async throws {
         guard state == .connected, let webSocketTask = webSocketTask else {
             throw NostrError.networkError("Not connected to relay")
@@ -211,10 +289,14 @@ public class RelayConnection: ObservableObject {
         }
     }
     
+    /// Stream of messages received from the relay.
+    /// 
+    /// Use this to listen for events, confirmations, and other relay responses.
     public var messages: AsyncStream<RelayMessage> {
         return messageStream ?? AsyncStream { _ in }
     }
     
+    /// Starts listening for messages from the WebSocket.
     private func startListening() async {
         guard let webSocketTask = webSocketTask else { return }
         
@@ -233,6 +315,9 @@ public class RelayConnection: ObservableObject {
         }
     }
     
+    /// Handles incoming WebSocket messages and converts them to RelayMessages.
+    /// 
+    /// - Parameter message: The WebSocket message to handle
     private func handleWebSocketMessage(_ message: URLSessionWebSocketTask.Message) async {
         switch message {
         case .string(let text):
@@ -253,12 +338,39 @@ public class RelayConnection: ObservableObject {
 }
 
 // MARK: - Relay Pool
+
+/// Manages connections to multiple NOSTR relays.
+/// 
+/// RelayPool allows you to connect to multiple relays simultaneously,
+/// broadcast messages to all connected relays, and aggregate responses.
+/// 
+/// ## Usage
+/// ```swift
+/// let pool = RelayPool()
+/// try await pool.addRelay(URL(string: "wss://relay1.example.com")!)
+/// try await pool.addRelay(URL(string: "wss://relay2.example.com")!)
+/// 
+/// // Broadcast to all relays
+/// await pool.publishEvent(signedEvent)
+/// 
+/// // Listen to all relays
+/// for await (relayURL, message) in pool.allMessages {
+///     print("From \(relayURL): \(message)")
+/// }
+/// ```
 @MainActor
 public class RelayPool: ObservableObject {
+    /// Dictionary of relay URLs to their connections
+    /// Dictionary of relay URLs to their connections
     @Published public private(set) var connections: [URL: RelayConnection] = [:]
     
+    /// Creates a new relay pool.
     public init() {}
     
+    /// Adds a new relay to the pool and connects to it.
+    /// 
+    /// - Parameter url: The WebSocket URL of the relay
+    /// - Throws: ``NostrError/networkError(_:)`` if the relay already exists or connection fails
     public func addRelay(_ url: URL) async throws {
         guard connections[url] == nil else {
             throw NostrError.networkError("Relay already exists")
@@ -269,6 +381,9 @@ public class RelayPool: ObservableObject {
         try await connection.connect(to: url)
     }
     
+    /// Removes a relay from the pool and disconnects from it.
+    /// 
+    /// - Parameter url: The URL of the relay to remove
     public func removeRelay(_ url: URL) async {
         if let connection = connections[url] {
             await connection.disconnect()
@@ -276,6 +391,9 @@ public class RelayPool: ObservableObject {
         }
     }
     
+    /// Broadcasts a message to all connected relays.
+    /// 
+    /// - Parameter message: The message to broadcast
     public func broadcast(_ message: ClientMessage) async {
         await withTaskGroup(of: Void.self) { group in
             for connection in connections.values {
@@ -290,21 +408,35 @@ public class RelayPool: ObservableObject {
         }
     }
     
+    /// Subscribes to events matching the given filters on all relays.
+    /// 
+    /// - Parameters:
+    ///   - subscriptionId: Unique identifier for this subscription
+    ///   - filters: Array of filters to match events
     public func subscribe(subscriptionId: String, filters: [Filter]) async {
         let message = ClientMessage.req(subscriptionId: subscriptionId, filters: filters)
         await broadcast(message)
     }
     
+    /// Unsubscribes from events with the given subscription ID on all relays.
+    /// 
+    /// - Parameter subscriptionId: The subscription ID to close
     public func unsubscribe(subscriptionId: String) async {
         let message = ClientMessage.close(subscriptionId: subscriptionId)
         await broadcast(message)
     }
     
+    /// Publishes an event to all connected relays.
+    /// 
+    /// - Parameter event: The signed event to publish
     public func publishEvent(_ event: NostrEvent) async {
         let message = ClientMessage.event(event)
         await broadcast(message)
     }
     
+    /// Stream of all messages from all connected relays.
+    /// 
+    /// Each message is paired with the URL of the relay it came from.
     public var allMessages: AsyncStream<(URL, RelayMessage)> {
         return AsyncStream { continuation in
             Task {
