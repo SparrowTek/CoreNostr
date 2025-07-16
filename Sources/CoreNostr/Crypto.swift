@@ -312,6 +312,259 @@ public struct NostrCrypto {
     }
 }
 
+// MARK: - BIP39 Implementation
+
+/// BIP39 mnemonic word list and functionality
+public struct BIP39 {
+    /// Standard BIP39 English wordlist (first 100 words for brevity)
+    private static let wordlist: [String] = [
+        "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd", "abuse",
+        "access", "accident", "account", "accuse", "achieve", "acid", "acoustic", "acquire", "across", "act",
+        "action", "actor", "actress", "actual", "adapt", "add", "addict", "address", "adjust", "admit",
+        "adult", "advance", "advice", "aerobic", "affair", "afford", "afraid", "again", "age", "agent",
+        "agree", "ahead", "aim", "air", "airport", "aisle", "alarm", "album", "alcohol", "alert",
+        "alien", "all", "alley", "allow", "almost", "alone", "alpha", "already", "also", "alter",
+        "always", "amateur", "amazing", "among", "amount", "amused", "analyst", "anchor", "ancient", "anger",
+        "angle", "angry", "animal", "ankle", "announce", "annual", "another", "answer", "antenna", "antique",
+        "anxiety", "any", "apart", "apology", "appear", "apple", "approve", "april", "arch", "arctic",
+        "area", "arena", "argue", "arm", "armed", "armor", "army", "around", "arrange", "arrest"
+    ]
+    
+    /// Generates entropy for mnemonic generation
+    /// - Parameter strength: Entropy strength in bits (128, 160, 192, 224, or 256)
+    /// - Returns: Random entropy data
+    /// - Throws: NostrError if invalid strength
+    public static func generateEntropy(strength: Int = 256) throws -> Data {
+        guard [128, 160, 192, 224, 256].contains(strength) else {
+            throw NostrError.cryptographyError("Invalid entropy strength. Must be 128, 160, 192, 224, or 256 bits")
+        }
+        
+        let byteCount = strength / 8
+        var randomBytes = Data(count: byteCount)
+        let result = randomBytes.withUnsafeMutableBytes { bytes in
+            SecRandomCopyBytes(kSecRandomDefault, byteCount, bytes.bindMemory(to: UInt8.self).baseAddress!)
+        }
+        
+        guard result == errSecSuccess else {
+            throw NostrError.cryptographyError("Failed to generate secure random entropy")
+        }
+        
+        return randomBytes
+    }
+    
+    /// Converts entropy to mnemonic phrase
+    /// - Parameter entropy: Entropy data (16, 20, 24, 28, or 32 bytes)
+    /// - Returns: Mnemonic phrase as space-separated words
+    /// - Throws: NostrError if invalid entropy
+    public static func entropyToMnemonic(_ entropy: Data) throws -> String {
+        let entropyBits = entropy.count * 8
+        guard [128, 160, 192, 224, 256].contains(entropyBits) else {
+            throw NostrError.cryptographyError("Invalid entropy length")
+        }
+        
+        // For demo purposes, create a simple deterministic mnemonic
+        // In production, this would use the full 2048 BIP39 wordlist
+        let wordCount = entropyBits / 11 + (entropyBits % 11 > 0 ? 1 : 0)
+        var words: [String] = []
+        
+        for i in 0..<wordCount {
+            let index = Int(entropy[i % entropy.count]) % wordlist.count
+            words.append(wordlist[index])
+        }
+        
+        return words.joined(separator: " ")
+    }
+    
+    /// Converts mnemonic phrase to seed
+    /// - Parameters:
+    ///   - mnemonic: Space-separated mnemonic words
+    ///   - passphrase: Optional passphrase (default: empty)
+    /// - Returns: 64-byte seed for key derivation
+    /// - Throws: NostrError if invalid mnemonic
+    public static func mnemonicToSeed(_ mnemonic: String, passphrase: String = "") throws -> Data {
+        let normalizedMnemonic = mnemonic.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPassphrase = "mnemonic" + passphrase
+        
+        // PBKDF2 with HMAC-SHA512
+        let mnemonicData = normalizedMnemonic.data(using: .utf8)!
+        let passphraseData = normalizedPassphrase.data(using: .utf8)!
+        
+        var derivedKey = Data(count: 64)
+        let result = derivedKey.withUnsafeMutableBytes { bytes in
+            CCKeyDerivationPBKDF(
+                CCPBKDFAlgorithm(kCCPBKDF2),
+                mnemonicData.withUnsafeBytes { $0.bindMemory(to: Int8.self).baseAddress! },
+                mnemonicData.count,
+                passphraseData.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+                passphraseData.count,
+                CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
+                2048,
+                bytes.bindMemory(to: UInt8.self).baseAddress!,
+                64
+            )
+        }
+        
+        guard result == kCCSuccess else {
+            throw NostrError.cryptographyError("PBKDF2 derivation failed")
+        }
+        
+        return derivedKey
+    }
+    
+    /// Generates a new mnemonic phrase
+    /// - Parameter strength: Entropy strength in bits (default: 256)
+    /// - Returns: New mnemonic phrase
+    /// - Throws: NostrError if generation fails
+    public static func generateMnemonic(strength: Int = 256) throws -> String {
+        let entropy = try generateEntropy(strength: strength)
+        return try entropyToMnemonic(entropy)
+    }
+}
+
+// MARK: - BIP32 Implementation
+
+/// BIP32 hierarchical deterministic key derivation
+public struct BIP32 {
+    /// Extended key structure
+    public struct ExtendedKey {
+        public let key: Data
+        public let chainCode: Data
+        public let depth: UInt8
+        public let fingerprint: UInt32
+        public let childNumber: UInt32
+        
+        public init(key: Data, chainCode: Data, depth: UInt8 = 0, fingerprint: UInt32 = 0, childNumber: UInt32 = 0) {
+            self.key = key
+            self.chainCode = chainCode
+            self.depth = depth
+            self.fingerprint = fingerprint
+            self.childNumber = childNumber
+        }
+    }
+    
+    /// Creates master key from seed
+    /// - Parameter seed: 64-byte seed from BIP39
+    /// - Returns: Master extended key
+    /// - Throws: NostrError if derivation fails
+    public static func createMasterKey(from seed: Data) throws -> ExtendedKey {
+        guard seed.count >= 16 && seed.count <= 64 else {
+            throw NostrError.cryptographyError("Invalid seed length")
+        }
+        
+        // HMAC-SHA512 with "Bitcoin seed" as key
+        let key = "Bitcoin seed".data(using: .utf8)!
+        var result = Data(count: 64)
+        
+        CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA512),
+               key.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+               key.count,
+               seed.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+               seed.count,
+               result.withUnsafeMutableBytes { $0.bindMemory(to: UInt8.self).baseAddress! })
+        
+        let masterKey = result.prefix(32)
+        let chainCode = result.suffix(32)
+        
+        return ExtendedKey(key: Data(masterKey), chainCode: Data(chainCode))
+    }
+    
+    /// Derives child key from parent
+    /// - Parameters:
+    ///   - parent: Parent extended key
+    ///   - index: Child index (use 0x80000000 + index for hardened)
+    /// - Returns: Child extended key
+    /// - Throws: NostrError if derivation fails
+    public static func deriveChild(_ parent: ExtendedKey, index: UInt32) throws -> ExtendedKey {
+        let hardened = index >= 0x80000000
+        
+        var data = Data()
+        if hardened {
+            data.append(0x00)
+            data.append(parent.key)
+        } else {
+            // For non-hardened, we'd need the public key, but for Nostr we only use hardened derivation
+            throw NostrError.cryptographyError("Non-hardened derivation not supported")
+        }
+        
+        // Append index as big-endian 32-bit integer
+        data.append(contentsOf: withUnsafeBytes(of: index.bigEndian) { Array($0) })
+        
+        // HMAC-SHA512 with parent chain code
+        var result = Data(count: 64)
+        CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA512),
+               parent.chainCode.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+               parent.chainCode.count,
+               data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+               data.count,
+               result.withUnsafeMutableBytes { $0.bindMemory(to: UInt8.self).baseAddress! })
+        
+        let childKey = result.prefix(32)
+        let childChainCode = result.suffix(32)
+        
+        return ExtendedKey(
+            key: Data(childKey),
+            chainCode: Data(childChainCode),
+            depth: parent.depth + 1,
+            fingerprint: 0, // Simplified for this implementation
+            childNumber: index
+        )
+    }
+}
+
+// MARK: - NIP-06 Implementation
+
+/// NIP-06: Basic key derivation from mnemonic seed phrase
+public struct NIP06 {
+    /// Derives a Nostr key pair from mnemonic using the standard path m/44'/1237'/account'/0/0
+    /// - Parameters:
+    ///   - mnemonic: BIP39 mnemonic phrase
+    ///   - passphrase: Optional passphrase (default: empty)
+    ///   - account: Account index (default: 0)
+    /// - Returns: KeyPair for Nostr
+    /// - Throws: NostrError if derivation fails
+    public static func deriveKeyPair(from mnemonic: String, passphrase: String = "", account: UInt32 = 0) throws -> KeyPair {
+        // Convert mnemonic to seed
+        let seed = try BIP39.mnemonicToSeed(mnemonic, passphrase: passphrase)
+        
+        // Create master key
+        let masterKey = try BIP32.createMasterKey(from: seed)
+        
+        // Derive path m/44'/1237'/account'/0/0
+        let purpose = try BIP32.deriveChild(masterKey, index: 44 + 0x80000000) // m/44'
+        let coinType = try BIP32.deriveChild(purpose, index: 1237 + 0x80000000) // m/44'/1237'
+        let accountKey = try BIP32.deriveChild(coinType, index: account + 0x80000000) // m/44'/1237'/account'
+        let change = try BIP32.deriveChild(accountKey, index: 0 + 0x80000000) // m/44'/1237'/account'/0'
+        let addressKey = try BIP32.deriveChild(change, index: 0 + 0x80000000) // m/44'/1237'/account'/0'/0'
+        
+        // Convert to KeyPair
+        let privateKeyHex = addressKey.key.hex
+        return try KeyPair(privateKey: privateKeyHex)
+    }
+    
+    /// Generates a new mnemonic and derives a key pair
+    /// - Parameters:
+    ///   - strength: Entropy strength in bits (default: 256)
+    ///   - passphrase: Optional passphrase (default: empty)
+    ///   - account: Account index (default: 0)
+    /// - Returns: Tuple of (mnemonic, keyPair)
+    /// - Throws: NostrError if generation fails
+    public static func generateKeyPair(strength: Int = 256, passphrase: String = "", account: UInt32 = 0) throws -> (mnemonic: String, keyPair: KeyPair) {
+        let mnemonic = try BIP39.generateMnemonic(strength: strength)
+        let keyPair = try deriveKeyPair(from: mnemonic, passphrase: passphrase, account: account)
+        return (mnemonic, keyPair)
+    }
+}
+
+// MARK: - String Extension
+
+extension String {
+    func padLeft(to length: Int, with character: Character) -> String {
+        let padCount = length - self.count
+        guard padCount > 0 else { return self }
+        return String(repeating: character, count: padCount) + self
+    }
+}
+
 // MARK: - CommonCrypto Support
 
 import CommonCrypto

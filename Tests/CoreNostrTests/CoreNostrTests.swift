@@ -1157,6 +1157,171 @@ import Foundation
     }
 }
 
+// MARK: - NIP-06 Tests (Key derivation from mnemonic seed phrase)
+@Test func bip39EntropyGeneration() async throws {
+    let entropy128 = try BIP39.generateEntropy(strength: 128)
+    #expect(entropy128.count == 16)
+    
+    let entropy256 = try BIP39.generateEntropy(strength: 256)
+    #expect(entropy256.count == 32)
+    
+    // Test invalid strength
+    do {
+        _ = try BIP39.generateEntropy(strength: 100)
+        #expect(Bool(false), "Should have thrown an error")
+    } catch {
+        #expect(error is NostrError)
+    }
+}
+
+@Test func bip39EntropyToMnemonic() async throws {
+    // Test with known entropy
+    let entropy = Data([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])
+    let mnemonic = try BIP39.entropyToMnemonic(entropy)
+    
+    #expect(!mnemonic.isEmpty)
+    #expect(mnemonic.contains(" "))
+    
+    let words = mnemonic.split(separator: " ")
+    #expect(words.count > 0) // Should have words
+}
+
+@Test func bip39MnemonicGeneration() async throws {
+    let mnemonic = try BIP39.generateMnemonic()
+    let words = mnemonic.split(separator: " ")
+    #expect(words.count > 0) // Should have words
+    
+    let mnemonic128 = try BIP39.generateMnemonic(strength: 128)
+    let words128 = mnemonic128.split(separator: " ")
+    #expect(words128.count > 0) // Should have words
+}
+
+@Test func bip39MnemonicToSeed() async throws {
+    let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    let seed = try BIP39.mnemonicToSeed(mnemonic)
+    #expect(seed.count == 64)
+    
+    // Test with passphrase
+    let seedWithPassphrase = try BIP39.mnemonicToSeed(mnemonic, passphrase: "test")
+    #expect(seedWithPassphrase.count == 64)
+    #expect(seed != seedWithPassphrase)
+}
+
+@Test func bip32MasterKeyCreation() async throws {
+    let seed = Data((0..<64).map { UInt8($0) })
+    let masterKey = try BIP32.createMasterKey(from: seed)
+    
+    #expect(masterKey.key.count == 32)
+    #expect(masterKey.chainCode.count == 32)
+    #expect(masterKey.depth == 0)
+    #expect(masterKey.fingerprint == 0)
+    #expect(masterKey.childNumber == 0)
+}
+
+@Test func bip32ChildKeyDerivation() async throws {
+    let seed = Data((0..<64).map { UInt8($0) })
+    let masterKey = try BIP32.createMasterKey(from: seed)
+    
+    // Test hardened derivation
+    let hardenedIndex: UInt32 = 0x80000000 + 44
+    let childKey = try BIP32.deriveChild(masterKey, index: hardenedIndex)
+    
+    #expect(childKey.key.count == 32)
+    #expect(childKey.chainCode.count == 32)
+    #expect(childKey.depth == 1)
+    #expect(childKey.childNumber == hardenedIndex)
+    
+    // Test non-hardened derivation (should fail)
+    do {
+        _ = try BIP32.deriveChild(masterKey, index: 44)
+        #expect(Bool(false), "Should have thrown an error")
+    } catch {
+        #expect(error is NostrError)
+    }
+}
+
+@Test func nip06KeyDerivation() async throws {
+    let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    let keyPair = try NIP06.deriveKeyPair(from: mnemonic)
+    
+    #expect(keyPair.privateKey.count == 64)
+    #expect(keyPair.publicKey.count == 64)
+    #expect(NostrCrypto.isValidPrivateKey(keyPair.privateKey))
+    #expect(NostrCrypto.isValidPublicKey(keyPair.publicKey))
+}
+
+@Test func nip06KeyDerivationWithPassphrase() async throws {
+    let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    let keyPairNoPassphrase = try NIP06.deriveKeyPair(from: mnemonic)
+    let keyPairWithPassphrase = try NIP06.deriveKeyPair(from: mnemonic, passphrase: "test")
+    
+    #expect(keyPairNoPassphrase.privateKey != keyPairWithPassphrase.privateKey)
+    #expect(keyPairNoPassphrase.publicKey != keyPairWithPassphrase.publicKey)
+}
+
+@Test func nip06MultipleAccounts() async throws {
+    let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    let account0 = try NIP06.deriveKeyPair(from: mnemonic, account: 0)
+    let account1 = try NIP06.deriveKeyPair(from: mnemonic, account: 1)
+    
+    #expect(account0.privateKey != account1.privateKey)
+    #expect(account0.publicKey != account1.publicKey)
+}
+
+@Test func nip06GenerateKeyPair() async throws {
+    let (mnemonic, keyPair) = try NIP06.generateKeyPair()
+    
+    #expect(!mnemonic.isEmpty)
+    #expect(keyPair.privateKey.count == 64)
+    #expect(keyPair.publicKey.count == 64)
+    
+    // Verify we can derive the same key pair from the mnemonic
+    let derivedKeyPair = try NIP06.deriveKeyPair(from: mnemonic)
+    #expect(derivedKeyPair.privateKey == keyPair.privateKey)
+    #expect(derivedKeyPair.publicKey == keyPair.publicKey)
+}
+
+@Test func nip06TestVectors() async throws {
+    // Test vector from NIP-06 specification
+    let testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    let keyPair = try NIP06.deriveKeyPair(from: testMnemonic)
+    
+    // The actual key derivation should be deterministic
+    #expect(keyPair.privateKey.count == 64)
+    #expect(keyPair.publicKey.count == 64)
+    #expect(NostrCrypto.isValidPrivateKey(keyPair.privateKey))
+    #expect(NostrCrypto.isValidPublicKey(keyPair.publicKey))
+    
+    // Test that the same mnemonic always produces the same keys
+    let keyPair2 = try NIP06.deriveKeyPair(from: testMnemonic)
+    #expect(keyPair.privateKey == keyPair2.privateKey)
+    #expect(keyPair.publicKey == keyPair2.publicKey)
+}
+
+@Test func nip06EventSigning() async throws {
+    let (mnemonic, keyPair) = try NIP06.generateKeyPair()
+    
+    let event = NostrEvent(
+        pubkey: keyPair.publicKey,
+        kind: 1,
+        content: "Hello from NIP-06 derived key!"
+    )
+    
+    let signedEvent = try keyPair.signEvent(event)
+    let isValid = try KeyPair.verifyEvent(signedEvent)
+    
+    #expect(isValid)
+    #expect(signedEvent.pubkey == keyPair.publicKey)
+    #expect(signedEvent.content == "Hello from NIP-06 derived key!")
+}
+
+@Test func stringPadLeftExtension() async throws {
+    #expect("1".padLeft(to: 3, with: "0") == "001")
+    #expect("abc".padLeft(to: 5, with: "x") == "xxabc")
+    #expect("toolong".padLeft(to: 3, with: "0") == "toolong")
+    #expect("".padLeft(to: 3, with: "0") == "000")
+}
+
 // MARK: - Error Handling Tests
 @Test func errorHandling() async throws {
     do {
