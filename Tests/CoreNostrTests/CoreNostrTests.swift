@@ -1183,17 +1183,17 @@ import Foundation
     #expect(mnemonic.contains(" "))
     
     let words = mnemonic.split(separator: " ")
-    #expect(words.count > 0) // Should have words
+    #expect(words.count == 12) // 128 bits = 12 words
 }
 
 @Test func bip39MnemonicGeneration() async throws {
     let mnemonic = try BIP39.generateMnemonic()
     let words = mnemonic.split(separator: " ")
-    #expect(words.count > 0) // Should have words
+    #expect(words.count == 24) // 256 bits = 24 words
     
     let mnemonic128 = try BIP39.generateMnemonic(strength: 128)
     let words128 = mnemonic128.split(separator: " ")
-    #expect(words128.count > 0) // Should have words
+    #expect(words128.count == 12) // 128 bits = 12 words
 }
 
 @Test func bip39MnemonicToSeed() async throws {
@@ -1272,8 +1272,11 @@ import Foundation
     let (mnemonic, keyPair) = try NIP06.generateKeyPair()
     
     #expect(!mnemonic.isEmpty)
+    #expect(mnemonic.split(separator: " ").count == 24) // 256 bits = 24 words
     #expect(keyPair.privateKey.count == 64)
     #expect(keyPair.publicKey.count == 64)
+    #expect(NostrCrypto.isValidPrivateKey(keyPair.privateKey))
+    #expect(NostrCrypto.isValidPublicKey(keyPair.publicKey))
     
     // Verify we can derive the same key pair from the mnemonic
     let derivedKeyPair = try NIP06.deriveKeyPair(from: mnemonic)
