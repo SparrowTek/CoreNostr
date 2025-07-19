@@ -1,32 +1,28 @@
 import Foundation
 
-// MARK: - CoreNostr Public API
-
 /// The main entry point for CoreNostr functionality.
-/// 
+///
 /// CoreNostr provides a convenient, high-level API for common NOSTR operations
 /// including key generation, event creation, and verification.
-/// 
+///
 /// ## Example Usage
 /// ```swift
 /// // Generate a key pair
 /// let keyPair = try CoreNostr.createKeyPair()
-/// 
+///
 /// // Create a text note
 /// let note = try CoreNostr.createTextNote(
 ///     keyPair: keyPair,
 ///     content: "Hello, NOSTR world!"
 /// )
-/// 
+///
 /// // Verify the event
 /// let isValid = try CoreNostr.verifyEvent(note)
 /// ```
 public struct CoreNostr {
-    /// The current version of the CoreNostr library.
-    public static let version = "1.0.0"
     
     /// Creates a new random key pair.
-    /// 
+    ///
     /// - Returns: A new ``KeyPair`` with randomly generated private and public keys
     /// - Throws: ``NostrError/cryptographyError(_:)`` if key generation fails
     public static func createKeyPair() throws -> KeyPair {
@@ -34,7 +30,7 @@ public struct CoreNostr {
     }
     
     /// Creates and signs a NOSTR event of the specified kind.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - kind: The type of event to create
@@ -58,7 +54,7 @@ public struct CoreNostr {
     }
     
     /// Verifies the signature and ID of a NOSTR event.
-    /// 
+    ///
     /// - Parameter event: The event to verify
     /// - Returns: `true` if the event is valid, `false` otherwise
     /// - Throws: ``NostrError/invalidEvent(_:)`` if the event ID is invalid
@@ -68,10 +64,10 @@ public struct CoreNostr {
     }
     
     /// Creates a text note event with optional reply and mention tags.
-    /// 
+    ///
     /// Text notes are the most common type of NOSTR event, similar to tweets.
     /// They can reference other events (replies) and mention users.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - content: The text content of the note
@@ -104,10 +100,10 @@ public struct CoreNostr {
     }
     
     /// Creates a metadata event containing user profile information.
-    /// 
+    ///
     /// Metadata events (kind 0) contain JSON-encoded profile information
     /// that clients use to display user profiles.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - name: The user's display name
@@ -188,11 +184,11 @@ public struct CoreNostr {
     }
     
     /// Creates a follow list event (NIP-02) containing the user's follows.
-    /// 
+    ///
     /// Follow lists are special events that contain a list of profiles being followed.
-    /// They can be used for backup, profile discovery, relay sharing, and implementing 
+    /// They can be used for backup, profile discovery, relay sharing, and implementing
     /// petname schemes.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - follows: Array of follow entries representing followed profiles
@@ -208,10 +204,10 @@ public struct CoreNostr {
     }
     
     /// Creates an OpenTimestamps attestation event (NIP-03) for a given event.
-    /// 
+    ///
     /// OpenTimestamps attestations provide cryptographic proof that a specific event
     /// existed at a certain point in time by anchoring it to the Bitcoin blockchain.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - eventId: The ID of the event being attested
@@ -231,9 +227,9 @@ public struct CoreNostr {
     }
     
     /// Creates an OpenTimestamps attestation event from base64-encoded OTS data.
-    /// 
+    ///
     /// This is a convenience method for when you have OTS data in base64 format.
-    /// 
+    ///
     /// - Parameters:
     ///   - keyPair: The key pair to sign the event with
     ///   - eventId: The ID of the event being attested
@@ -261,13 +257,13 @@ public struct CoreNostr {
     }
     
     /// Creates an encrypted direct message event (NIP-04) - DEPRECATED.
-    /// 
+    ///
     /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17 due to
     /// security vulnerabilities. This method is provided for backward compatibility only.
-    /// 
+    ///
     /// Encrypted direct messages use AES-256-CBC encryption with ECDH shared secrets.
     /// They leak metadata and should only be used with AUTH-enabled relays.
-    /// 
+    ///
     /// - Parameters:
     ///   - senderKeyPair: The sender's key pair for encryption and signing
     ///   - recipientPublicKey: The recipient's public key
@@ -293,10 +289,10 @@ public struct CoreNostr {
     }
     
     /// Decrypts an encrypted direct message event (NIP-04) - DEPRECATED.
-    /// 
+    ///
     /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17 due to
     /// security vulnerabilities. This method is provided for backward compatibility only.
-    /// 
+    ///
     /// - Parameters:
     ///   - event: The encrypted direct message event to decrypt
     ///   - recipientKeyPair: The recipient's key pair for decryption
@@ -424,7 +420,7 @@ extension NostrEvent {
 /// Extensions to ``Filter`` for creating common filter types.
 extension Filter {
     /// Creates a filter for text notes (kind 1 events).
-    /// 
+    ///
     /// - Parameters:
     ///   - authors: Optional array of author public keys to filter by
     ///   - since: Optional minimum creation date
@@ -447,7 +443,7 @@ extension Filter {
     }
     
     /// Creates a filter for metadata events (kind 0 events).
-    /// 
+    ///
     /// - Parameters:
     ///   - authors: Optional array of author public keys to filter by
     ///   - limit: Optional maximum number of events to return
@@ -464,7 +460,7 @@ extension Filter {
     }
     
     /// Creates a filter for replies to a specific event.
-    /// 
+    ///
     /// - Parameters:
     ///   - eventId: The ID of the event to find replies for
     ///   - since: Optional minimum creation date
@@ -484,7 +480,7 @@ extension Filter {
     }
     
     /// Creates a filter for follow lists (kind 3 events).
-    /// 
+    ///
     /// - Parameters:
     ///   - authors: Optional array of author public keys to filter by
     ///   - limit: Optional maximum number of events to return
@@ -501,7 +497,7 @@ extension Filter {
     }
     
     /// Creates a filter for OpenTimestamps attestation events (kind 1040).
-    /// 
+    ///
     /// - Parameters:
     ///   - authors: Optional array of author public keys to filter by
     ///   - eventIds: Optional array of event IDs being attested to
@@ -523,7 +519,7 @@ extension Filter {
     /// Creates a filter for encrypted direct message events (kind 4) - DEPRECATED.
     /// 
     /// **⚠️ SECURITY WARNING**: NIP-04 is deprecated in favor of NIP-17.
-    /// 
+    ///
     /// - Parameters:
     ///   - authors: Optional array of author public keys to filter by
     ///   - recipients: Optional array of recipient public keys to filter by
