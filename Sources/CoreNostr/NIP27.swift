@@ -246,6 +246,13 @@ public extension String {
     }
 }
 
+public extension NostrReference {
+    /// Parse all references from text
+    static func parseFromText(_ text: String) -> [NostrReference] {
+        NostrTextProcessor.findReferences(in: text).map { $0.reference }
+    }
+}
+
 // MARK: - CoreNostr Extensions
 
 public extension CoreNostr {

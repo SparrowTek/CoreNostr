@@ -36,6 +36,12 @@ public enum EventKind: Int, CaseIterable, Sendable {
     /// OpenTimestamps attestation (NIP-03)
     case openTimestamps = 1040
     
+    /// Zap request (NIP-57)
+    case zapRequest = 9734
+    
+    /// Zap receipt (NIP-57)
+    case zapReceipt = 9735
+    
     // MARK: - NIP-51 Lists
     
     /// Mute list - things the user wants to hide (NIP-51)
@@ -94,6 +100,19 @@ public enum EventKind: Int, CaseIterable, Sendable {
     /// Emoji sets - emoji collections (NIP-51)
     case emojiSets = 30030
     
+    // MARK: - NIP-23 Long-form Content
+    
+    /// Long-form text content (articles/blog posts) (NIP-23)
+    case longFormContent = 30023
+    
+    /// Long-form text content draft (NIP-23)
+    case longFormDraft = 30024
+    
+    // MARK: - NIP-42 Authentication
+    
+    /// Client authentication (NIP-42)
+    case clientAuthentication = 22242
+    
     /// Human-readable description of the event kind.
     public var description: String {
         switch self {
@@ -106,6 +125,8 @@ public enum EventKind: Int, CaseIterable, Sendable {
         case .reaction: return "Reaction"
         case .websiteReaction: return "Website Reaction"
         case .openTimestamps: return "OpenTimestamps Attestation"
+        case .zapRequest: return "Zap Request"
+        case .zapReceipt: return "Zap Receipt"
         case .muteList: return "Mute List"
         case .pinnedNotes: return "Pinned Notes"
         case .relayList: return "Relay List"
@@ -124,6 +145,9 @@ public enum EventKind: Int, CaseIterable, Sendable {
         case .curationSets: return "Curation Sets"
         case .interestSets: return "Interest Sets"
         case .emojiSets: return "Emoji Sets"
+        case .longFormContent: return "Long-form Content"
+        case .longFormDraft: return "Long-form Draft"
+        case .clientAuthentication: return "Client Authentication"
         }
     }
 }
