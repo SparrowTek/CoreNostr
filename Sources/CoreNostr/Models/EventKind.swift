@@ -27,6 +27,12 @@ public enum EventKind: Int, CaseIterable, Sendable {
     /// Event deletion (NIP-09)
     case deletion = 5
     
+    /// Reaction to an event (NIP-25)
+    case reaction = 7
+    
+    /// Reaction to a website (NIP-25)
+    case websiteReaction = 17
+    
     /// OpenTimestamps attestation (NIP-03)
     case openTimestamps = 1040
     
@@ -39,6 +45,8 @@ public enum EventKind: Int, CaseIterable, Sendable {
         case .followList: return "Follow List"
         case .encryptedDirectMessage: return "Encrypted Direct Message"
         case .deletion: return "Event Deletion"
+        case .reaction: return "Reaction"
+        case .websiteReaction: return "Website Reaction"
         case .openTimestamps: return "OpenTimestamps Attestation"
         }
     }
