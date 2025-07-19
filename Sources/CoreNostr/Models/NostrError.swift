@@ -21,6 +21,9 @@ public enum NostrError: Error, LocalizedError, Sendable {
     /// JSON serialization or deserialization failed
     case serializationError(String)
     
+    /// Bech32 encoding or decoding failed
+    case invalidBech32(String)
+    
     /// Localized description of the error.
     public var errorDescription: String? {
         switch self {
@@ -32,6 +35,8 @@ public enum NostrError: Error, LocalizedError, Sendable {
             return "Network error: \(message)"
         case .serializationError(let message):
             return "Serialization error: \(message)"
+        case .invalidBech32(let message):
+            return "Bech32 error: \(message)"
         }
     }
 }
