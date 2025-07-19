@@ -24,6 +24,9 @@ public enum EventKind: Int, CaseIterable, Sendable {
     /// Encrypted direct message (NIP-04) - DEPRECATED in favor of NIP-17
     case encryptedDirectMessage = 4
     
+    /// Event deletion (NIP-09)
+    case deletion = 5
+    
     /// OpenTimestamps attestation (NIP-03)
     case openTimestamps = 1040
     
@@ -35,6 +38,7 @@ public enum EventKind: Int, CaseIterable, Sendable {
         case .recommendServer: return "Recommend Server"
         case .followList: return "Follow List"
         case .encryptedDirectMessage: return "Encrypted Direct Message"
+        case .deletion: return "Event Deletion"
         case .openTimestamps: return "OpenTimestamps Attestation"
         }
     }
