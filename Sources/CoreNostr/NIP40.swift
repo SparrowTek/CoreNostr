@@ -200,7 +200,7 @@ extension NostrEvent {
         newTags.append(NIP40.expirationTag(after: interval))
         
         return NostrEvent(
-            id: self.id,
+            unvalidatedId: self.id,
             pubkey: self.pubkey,
             createdAt: self.createdAt,
             kind: self.kind,

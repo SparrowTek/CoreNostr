@@ -117,7 +117,7 @@ public struct ProofOfWork {
                 if difficulty >= targetDifficulty {
                     // Success! Return the mined event
                     return NostrEvent(
-                        id: eventId,
+                        unvalidatedId: eventId,
                         pubkey: event.pubkey,
                         createdAt: event.createdAt,
                         kind: event.kind,

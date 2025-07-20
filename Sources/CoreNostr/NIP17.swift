@@ -84,7 +84,7 @@ public enum NIP17 {
         
         // Create the rumor event (unsigned kind 14)
         let dmEvent = NostrEvent(
-            id: "", // Will be calculated when needed
+            unvalidatedId: "", // Will be calculated when needed
             pubkey: senderKeyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.directMessage,
@@ -198,7 +198,7 @@ public enum NIP17 {
         
         // Create the rumor event (unsigned kind 15)
         let fileEvent = NostrEvent(
-            id: "",
+            unvalidatedId: "",
             pubkey: senderKeyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.fileMessage,

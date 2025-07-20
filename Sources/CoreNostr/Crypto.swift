@@ -39,6 +39,7 @@ public struct KeyPair: Sendable, Codable {
     /// - Parameter privateKey: A 64-character hexadecimal private key
     /// - Throws: ``NostrError/cryptographyError(_:)`` if the private key is invalid
     public init(privateKey: PrivateKey) throws {
+        try Validation.validatePrivateKey(privateKey)
         self.privateKey = privateKey
         
         guard let privateKeyData = Data(hex: privateKey) else {
@@ -96,6 +97,9 @@ public struct KeyPair: Sendable, Codable {
     /// - Returns: `true` if the signature is valid, `false` otherwise
     /// - Throws: ``NostrError/cryptographyError(_:)`` if verification fails
     public static func verify(signature: Signature, data: Data, publicKey: PublicKey) throws -> Bool {
+        try Validation.validatePublicKey(publicKey)
+        try Validation.validateSignature(signature)
+        
         guard let publicKeyData = Data(hex: publicKey),
               let signatureData = Data(hex: signature) else {
             throw NostrError.cryptographyError("Invalid key or signature format")

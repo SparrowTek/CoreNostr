@@ -85,7 +85,7 @@ import Foundation
 
 @Test func nostrEventSerialization() async throws {
     let event = NostrEvent(
-        id: "test123",
+        unvalidatedId: "test123",
         pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         createdAt: 1234567890,
         kind: 1,
@@ -379,7 +379,7 @@ import Foundation
 @Test func followListFromEvent() async throws {
     let keyPair = try KeyPair.generate()
     let event = NostrEvent(
-        id: "test123",
+        unvalidatedId: "test123",
         pubkey: keyPair.publicKey,
         createdAt: 1234567890,
         kind: 3,
@@ -528,7 +528,7 @@ import Foundation
     
     let keyPair = try KeyPair.generate()
     let event = NostrEvent(
-        id: "test123",
+        unvalidatedId: "test123",
         pubkey: keyPair.publicKey,
         createdAt: 1234567890,
         kind: 1040,
@@ -549,7 +549,7 @@ import Foundation
     
     // Test with minimal tags (no relay URL)
     let minimalEvent = NostrEvent(
-        id: "test456",
+        unvalidatedId: "test456",
         pubkey: keyPair.publicKey,
         createdAt: 1234567890,
         kind: 1040,
@@ -734,7 +734,7 @@ import Foundation
     let encryptedContent = "dGVzdA==?iv=MTIzNDU2Nzg5MGFiY2RlZg=="
     
     let event = NostrEvent(
-        id: "test123",
+        unvalidatedId: "test123",
         pubkey: senderKeyPair.publicKey,
         createdAt: 1234567890,
         kind: 4,
@@ -1302,7 +1302,7 @@ import Foundation
 }
 
 @Test func nip06EventSigning() async throws {
-    let (mnemonic, keyPair) = try NIP06.generateKeyPair()
+    let (_, keyPair) = try NIP06.generateKeyPair()
     
     let event = NostrEvent(
         pubkey: keyPair.publicKey,

@@ -60,7 +60,7 @@ struct NIP19Tests {
     func testNprofile() throws {
         let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
         let relays = ["wss://relay.damus.io", "wss://nos.lol"]
-        let profile = NProfile(pubkey: pubkey, relays: relays)
+        let profile = try NProfile(pubkey: pubkey, relays: relays)
         let entity = Bech32Entity.nprofile(profile)
         
         let encoded = try entity.encoded
@@ -81,7 +81,7 @@ struct NIP19Tests {
         let author = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
         let relays = ["wss://relay.damus.io"]
         let kind = 1
-        let event = NEvent(eventId: eventId, relays: relays, author: author, kind: kind)
+        let event = try NEvent(eventId: eventId, relays: relays, author: author, kind: kind)
         let entity = Bech32Entity.nevent(event)
         
         let encoded = try entity.encoded
@@ -120,7 +120,7 @@ struct NIP19Tests {
         let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
         let kind = 30023
         let relays = ["wss://relay.damus.io", "wss://nos.lol"]
-        let addr = NAddr(identifier: identifier, pubkey: pubkey, kind: kind, relays: relays)
+        let addr = try NAddr(identifier: identifier, pubkey: pubkey, kind: kind, relays: relays)
         let entity = Bech32Entity.naddr(addr)
         
         let encoded = try entity.encoded
@@ -202,7 +202,7 @@ struct NIP19Tests {
     @Test("Test TLV encoding edge cases")
     func testTLVEdgeCases() throws {
         // Test nprofile with no relays
-        let profile = NProfile(pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", relays: [])
+        let profile = try NProfile(pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", relays: [])
         let entity = Bech32Entity.nprofile(profile)
         let encoded = try entity.encoded
         let decoded = try Bech32Entity(from: encoded)
@@ -214,7 +214,7 @@ struct NIP19Tests {
         #expect(decodedProfile.relays.isEmpty)
         
         // Test nevent with minimal fields
-        let event = NEvent(eventId: "d1b3f0c8a2e5d7f9b1c3e5a7d9f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5f7")
+        let event = try NEvent(eventId: "d1b3f0c8a2e5d7f9b1c3e5a7d9f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5f7")
         let eventEntity = Bech32Entity.nevent(event)
         let eventEncoded = try eventEntity.encoded
         let eventDecoded = try Bech32Entity(from: eventEncoded)
@@ -228,7 +228,7 @@ struct NIP19Tests {
         #expect(decodedEvent.kind == nil)
         
         // Test naddr with no relays
-        let addr = NAddr(identifier: "test", pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", kind: 30023)
+        let addr = try NAddr(identifier: "test", pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", kind: 30023)
         let addrEntity = Bech32Entity.naddr(addr)
         let addrEncoded = try addrEntity.encoded
         let addrDecoded = try Bech32Entity(from: addrEncoded)
@@ -246,7 +246,7 @@ struct NIP19Tests {
         let kinds = [0, 1, 1000, 10000, 30023, 65535, 1000000]
         
         for kind in kinds {
-            let event = NEvent(
+            let event = try NEvent(
                 eventId: "d1b3f0c8a2e5d7f9b1c3e5a7d9f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5f7",
                 kind: kind
             )

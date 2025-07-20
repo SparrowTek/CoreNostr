@@ -16,7 +16,11 @@ public struct NProfile: Sendable {
     public let pubkey: String
     public let relays: [String]
     
-    public init(pubkey: String, relays: [String] = []) {
+    public init(pubkey: String, relays: [String] = []) throws {
+        try Validation.validatePublicKey(pubkey)
+        for relay in relays {
+            try Validation.validateRelayURL(relay)
+        }
         self.pubkey = pubkey
         self.relays = relays
     }
@@ -28,7 +32,16 @@ public struct NEvent: Sendable {
     public let author: String?
     public let kind: Int?
     
-    public init(eventId: String, relays: [String]? = nil, author: String? = nil, kind: Int? = nil) {
+    public init(eventId: String, relays: [String]? = nil, author: String? = nil, kind: Int? = nil) throws {
+        try Validation.validateEventId(eventId)
+        if let author = author {
+            try Validation.validatePublicKey(author)
+        }
+        if let relays = relays {
+            for relay in relays {
+                try Validation.validateRelayURL(relay)
+            }
+        }
         self.eventId = eventId
         self.relays = relays
         self.author = author
@@ -42,7 +55,13 @@ public struct NAddr: Sendable {
     public let kind: Int
     public let relays: [String]?
     
-    public init(identifier: String, pubkey: String, kind: Int, relays: [String]? = nil) {
+    public init(identifier: String, pubkey: String, kind: Int, relays: [String]? = nil) throws {
+        try Validation.validatePublicKey(pubkey)
+        if let relays = relays {
+            for relay in relays {
+                try Validation.validateRelayURL(relay)
+            }
+        }
         self.identifier = identifier
         self.pubkey = pubkey
         self.kind = kind
@@ -350,7 +369,7 @@ public extension Bech32Entity {
         if let kind = event.kind {
             var kindBytes = withUnsafeBytes(of: UInt32(kind).bigEndian) { Data($0) }
             // Remove leading zeros
-            while kindBytes.count > 1 && kindBytes[0] == 0 {
+            while kindBytes.count > 1 && kindBytes.first == 0 {
                 kindBytes = kindBytes.dropFirst()
             }
             result.append(TLVType.kind.rawValue)
@@ -411,8 +430,10 @@ public extension Bech32Entity {
         while index < data.endIndex {
             guard index + 2 <= data.endIndex else { break }
             
+            guard index < data.count, index + 1 < data.count else { break }
             let type = data[index]
-            let length = Int(data[index + 1])
+            let lengthByte = data[index + 1]
+            let length = Int(lengthByte)
             index += 2
             
             guard index + length <= data.endIndex else {
@@ -441,7 +462,7 @@ public extension Bech32Entity {
             throw NostrError.invalidBech32("Missing pubkey in nprofile")
         }
         
-        return NProfile(pubkey: pubkey, relays: relays)
+        return try NProfile(pubkey: pubkey, relays: relays)
     }
     
     /// Decode TLV for nevent
@@ -455,8 +476,10 @@ public extension Bech32Entity {
         while index < data.endIndex {
             guard index + 2 <= data.endIndex else { break }
             
+            guard index < data.count, index + 1 < data.count else { break }
             let type = data[index]
-            let length = Int(data[index + 1])
+            let lengthByte = data[index + 1]
+            let length = Int(lengthByte)
             index += 2
             
             guard index + length <= data.endIndex else {
@@ -497,7 +520,7 @@ public extension Bech32Entity {
             throw NostrError.invalidBech32("Missing event ID in nevent")
         }
         
-        return NEvent(eventId: eventId, relays: relays.isEmpty ? nil : relays, author: author, kind: kind)
+        return try NEvent(eventId: eventId, relays: relays.isEmpty ? nil : relays, author: author, kind: kind)
     }
     
     /// Decode TLV for naddr
@@ -511,8 +534,10 @@ public extension Bech32Entity {
         while index < data.endIndex {
             guard index + 2 <= data.endIndex else { break }
             
+            guard index < data.count, index + 1 < data.count else { break }
             let type = data[index]
-            let length = Int(data[index + 1])
+            let lengthByte = data[index + 1]
+            let length = Int(lengthByte)
             index += 2
             
             guard index + length <= data.endIndex else {
@@ -555,7 +580,7 @@ public extension Bech32Entity {
             throw NostrError.invalidBech32("Missing required fields in naddr")
         }
         
-        return NAddr(identifier: identifier, pubkey: pubkey, kind: kind, relays: relays.isEmpty ? nil : relays)
+        return try NAddr(identifier: identifier, pubkey: pubkey, kind: kind, relays: relays.isEmpty ? nil : relays)
     }
 }
 

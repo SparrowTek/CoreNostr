@@ -71,6 +71,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     ///   - tags: Array of tag arrays for metadata
     ///   - content: The event content
     ///   - sig: The event signature
+    /// - Throws: NostrError if validation fails
     public init(
         id: EventID,
         pubkey: PublicKey,
@@ -79,7 +80,11 @@ public struct NostrEvent: Codable, Hashable, Sendable {
         tags: [[String]],
         content: String,
         sig: Signature
-    ) {
+    ) throws {
+        try Validation.validateEventId(id)
+        try Validation.validatePublicKey(pubkey)
+        try Validation.validateSignature(sig)
+        
         self.id = id
         self.pubkey = pubkey
         self.createdAt = createdAt
@@ -157,7 +162,7 @@ public struct NostrEvent: Codable, Hashable, Sendable {
     public func withSignature(_ signature: Signature) -> NostrEvent {
         let id = calculateId()
         return NostrEvent(
-            id: id,
+            unvalidatedId: id,
             pubkey: pubkey,
             createdAt: createdAt,
             kind: kind,
@@ -166,4 +171,34 @@ public struct NostrEvent: Codable, Hashable, Sendable {
             sig: signature
         )
     }
+    
+    /// Creates a complete NOSTR event without validation (internal use only).
+    ///
+    /// - Parameters:
+    ///   - id: The unique event identifier
+    ///   - pubkey: The author's public key
+    ///   - createdAt: Unix timestamp of creation
+    ///   - kind: The event kind
+    ///   - tags: Array of tag arrays for metadata
+    ///   - content: The event content
+    ///   - sig: The event signature
+    /// - Warning: This initializer does not validate input.
+    internal init(
+        unvalidatedId id: EventID,
+        pubkey: PublicKey,
+        createdAt: Int64,
+        kind: Int,
+        tags: [[String]],
+        content: String,
+        sig: Signature
+    ) {
+        self.id = id
+        self.pubkey = pubkey
+        self.createdAt = createdAt
+        self.kind = kind
+        self.tags = tags
+        self.content = content
+        self.sig = sig
+    }
 }
+

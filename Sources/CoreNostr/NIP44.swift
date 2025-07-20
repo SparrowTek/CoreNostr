@@ -71,6 +71,10 @@ public enum NIP44 {
         senderPrivateKey: String,
         recipientPublicKey: String
     ) throws -> String {
+        // Validate keys
+        try Validation.validatePrivateKey(senderPrivateKey)
+        try Validation.validatePublicKey(recipientPublicKey)
+        
         // Validate inputs
         guard let plaintextData = plaintext.data(using: .utf8) else {
             throw NIP44Error.invalidPayload
@@ -146,6 +150,9 @@ public enum NIP44 {
         recipientPrivateKey: String,
         senderPublicKey: String
     ) throws -> String {
+        // Validate keys
+        try Validation.validatePrivateKey(recipientPrivateKey)
+        try Validation.validatePublicKey(senderPublicKey)
         // Decode from base64
         guard let payloadData = Data(base64Encoded: payload) else {
             throw NIP44Error.invalidPayload
@@ -394,7 +401,7 @@ public enum NIP44 {
     private static func unpad(_ paddedData: Data) throws -> Data {
         // Find the last non-zero byte
         var unpaddedLen = paddedData.count
-        while unpaddedLen > 0 && paddedData[unpaddedLen - 1] == 0 {
+        while unpaddedLen > 0 && unpaddedLen - 1 < paddedData.count && paddedData[unpaddedLen - 1] == 0 {
             unpaddedLen -= 1
         }
         

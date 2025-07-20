@@ -38,12 +38,16 @@ public struct CoreNostr {
     ///   - tags: Optional tags for the event metadata
     /// - Returns: A signed ``NostrEvent`` ready for publishing
     /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/invalidEvent(_:)`` if content is too large
     public static func createEvent(
         keyPair: KeyPair,
         kind: EventKind,
         content: String,
         tags: [[String]] = []
     ) throws -> NostrEvent {
+        // Validate content size
+        try Validation.validateContentSize(content)
+        
         let event = NostrEvent(
             pubkey: keyPair.publicKey,
             kind: kind.rawValue,
@@ -60,6 +64,8 @@ public struct CoreNostr {
     /// - Throws: ``NostrError/invalidEvent(_:)`` if the event ID is invalid
     /// - Throws: ``NostrError/cryptographyError(_:)`` if verification fails
     public static func verifyEvent(_ event: NostrEvent) throws -> Bool {
+        // Validate event structure first
+        try Validation.validateNostrEvent(event)
         return try KeyPair.verifyEvent(event)
     }
     
@@ -84,10 +90,12 @@ public struct CoreNostr {
         var tags: [[String]] = []
         
         if let replyTo = replyTo {
+            try Validation.validateEventId(replyTo)
             tags.append(["e", replyTo])
         }
         
         for user in mentionedUsers {
+            try Validation.validatePublicKey(user)
             tags.append(["p", user])
         }
         
@@ -161,6 +169,7 @@ public struct CoreNostr {
         publicKey: PublicKey,
         verifier: NostrNIP05Verifier = NostrNIP05Verifier()
     ) async throws -> Bool {
+        try Validation.validatePublicKey(publicKey)
         let nip05Identifier = try NostrNIP05Identifier(identifier: identifier)
         return try await verifier.verify(identifier: nip05Identifier, publicKey: publicKey)
     }

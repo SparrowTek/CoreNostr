@@ -217,7 +217,7 @@ struct NIP13Tests {
     func testVerifyProofOfWork() throws {
         // Create event with manual nonce that gives known difficulty
         let event1 = NostrEvent(
-            id: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits (000 = 12, 1 = 3)
+            unvalidatedId: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits (000 = 12, 1 = 3)
             pubkey: keyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.textNote.rawValue,
@@ -232,7 +232,7 @@ struct NIP13Tests {
         
         // Event without nonce tag
         let event2 = NostrEvent(
-            id: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits
+            unvalidatedId: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits
             pubkey: keyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.textNote.rawValue,
@@ -246,7 +246,7 @@ struct NIP13Tests {
         
         // Event with wrong claimed difficulty
         let event3 = NostrEvent(
-            id: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits
+            unvalidatedId: "000123456789abcdef0123456789abcdef0123456789abcdef0123456789abc",  // 15 bits
             pubkey: keyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.textNote.rawValue,
@@ -299,7 +299,7 @@ struct NIP13Tests {
     @Test("NostrEvent PoW extensions")
     func testNostrEventExtensions() {
         let event = NostrEvent(
-            id: "00000000c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaef",  // 32 bits
+            unvalidatedId: "00000000c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaef",  // 32 bits
             pubkey: keyPair.publicKey,
             createdAt: Int64(Date().timeIntervalSince1970),
             kind: EventKind.textNote.rawValue,

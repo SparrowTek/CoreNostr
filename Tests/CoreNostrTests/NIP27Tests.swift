@@ -57,7 +57,7 @@ struct NIP27Tests {
     
     @Test("Parse nprofile reference with relays")
     func testParseNProfileReference() throws {
-        let profile = NProfile(
+        let profile = try NProfile(
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             relays: ["wss://relay1.com", "wss://relay2.com"]
         )
@@ -77,7 +77,7 @@ struct NIP27Tests {
     
     @Test("Parse nevent reference with metadata")
     func testParseNEventReference() throws {
-        let event = NEvent(
+        let event = try NEvent(
             eventId: "45326f5d6962881b52ba562a2e5e0b43c90e6e3c5f30a1c7e305c6b99f5f1a5e",
             relays: ["wss://relay.example.com"],
             author: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
@@ -197,12 +197,12 @@ struct NIP27Tests {
     func testMentionBuilder() throws {
         var builder = MentionBuilder()
         
-        let profile = NProfile(
+        let profile = try NProfile(
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             relays: ["wss://relay.com"]
         )
         
-        let event = NEvent(
+        let event = try NEvent(
             eventId: "45326f5d6962881b52ba562a2e5e0b43c90e6e3c5f30a1c7e305c6b99f5f1a5e",
             relays: [],
             author: nil,
@@ -224,7 +224,7 @@ struct NIP27Tests {
     @Test("Replace mention with nostr URI")
     func testReplaceMention() throws {
         let text = "Hello @alice, how are you?"
-        let profile = NProfile(
+        let profile = try NProfile(
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             relays: []
         )
@@ -294,7 +294,7 @@ struct NIP27Tests {
     
     @Test("Parse naddr reference")
     func testParseNAddrReference() throws {
-        let addr = NAddr(
+        let addr = try NAddr(
             identifier: "my-article",
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             kind: 30023,

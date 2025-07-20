@@ -74,7 +74,7 @@ struct NIP21Tests {
     @Test("Parse nprofile and nevent URIs")
     func testParseComplexURIs() throws {
         // Test nprofile
-        let profile = NProfile(
+        let profile = try NProfile(
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             relays: ["wss://relay.damus.io", "wss://nos.lol"]
         )
@@ -98,7 +98,7 @@ struct NIP21Tests {
         }
         
         // Test nevent
-        let event = NEvent(
+        let event = try NEvent(
             eventId: "d1b3f0c8a2e5d7f9b1c3e5a7d9f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5f7",
             relays: ["wss://relay.damus.io"],
             author: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
@@ -117,7 +117,7 @@ struct NIP21Tests {
     
     @Test("Parse naddr URI")
     func testParseNaddrURI() throws {
-        let addr = NAddr(
+        let addr = try NAddr(
             identifier: "1700847963",
             pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
             kind: 30023,
@@ -191,7 +191,7 @@ struct NIP21Tests {
         #expect(eventURI?.uriString.hasPrefix("nostr:note") == true)
         
         // Test NProfile extension
-        let profile = NProfile(
+        let profile = try NProfile(
             pubkey: pubkey,
             relays: ["wss://relay.damus.io"]
         )
@@ -200,7 +200,7 @@ struct NIP21Tests {
         #expect(profileURI?.uriString.hasPrefix("nostr:nprofile") == true)
         
         // Test NEvent extension
-        let event = NEvent(
+        let event = try NEvent(
             eventId: eventId,
             relays: ["wss://relay.damus.io"],
             author: pubkey,
@@ -211,7 +211,7 @@ struct NIP21Tests {
         #expect(neventURI?.uriString.hasPrefix("nostr:nevent") == true)
         
         // Test NAddr extension
-        let addr = NAddr(
+        let addr = try NAddr(
             identifier: "test",
             pubkey: pubkey,
             kind: 30023,
@@ -256,7 +256,7 @@ struct NIP21Tests {
         #expect(parsedNote == noteURI)
         
         // Complex nprofile round-trip
-        let profile = NProfile(pubkey: pubkey, relays: ["wss://relay1.com", "wss://relay2.com"])
+        let profile = try NProfile(pubkey: pubkey, relays: ["wss://relay1.com", "wss://relay2.com"])
         let profileURI = profile.nostrURI!
         let profileString = profileURI.uriString
         let parsedProfile = NostrURI(from: profileString)
