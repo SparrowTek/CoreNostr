@@ -1,57 +1,81 @@
 # ``CoreNostr``
 
-A Swift package implementing the NOSTR protocol for cross-platform compatibility.
+A comprehensive Swift implementation of the Nostr protocol providing cross-platform primitives for building Nostr applications.
 
 ## Overview
 
-CoreNostr is a Swift package that provides a complete implementation of the NOSTR (Notes and Other Stuff Transmitted by Relays) protocol. It offers cross-platform compatibility across iOS, macOS, watchOS, tvOS, and Linux, making it perfect for building decentralized social applications.
+CoreNostr is a Swift package that implements the Nostr (Notes and Other Stuff Transmitted by Relays) protocol. It provides essential primitives and utilities that can be shared across platforms (iOS, macOS, Linux) without any networking code.
 
-The library focuses on providing shared functionality that can be used across different NOSTR implementations, serving as a foundation for more specialized packages like iOS-specific NostrKit and swift-nostr-relay.
+This library focuses on:
+- Event creation and validation
+- Cryptographic operations (signing, verification, encryption)
+- NIP (Nostr Implementation Possibilities) support
+- Data encoding/decoding
+- Protocol compliance
 
-## Features
+## Topics
 
-- **Complete NIP-01 Implementation**: Full support for the basic NOSTR protocol specification
-- **Modern Swift Concurrency**: Built with async/await and structured concurrency
-- **Cross-Platform Support**: Works on all Apple platforms plus Linux
-- **Cryptographic Security**: Uses secp256k1 elliptic curve cryptography with Schnorr signatures
-- **WebSocket Networking**: Real-time communication with NOSTR relays
-- **Type Safety**: Strong typing throughout with comprehensive error handling
+### Essentials
 
-## Key Components
-
-### Event Management
-- ``NostrEvent`` - Core event structure following NIP-01 specification
-- ``EventKind`` - Enumeration of supported event types
-- Event creation, signing, and verification
+- ``NostrEvent``
+- ``KeyPair``
+- ``CoreNostr``
+- ``Filter``
+- ``EventKind``
 
 ### Cryptography
-- ``KeyPair`` - Secure key generation and management
-- Digital signatures using Schnorr signatures over secp256k1
-- Event ID calculation and validation
 
-### Network Communication
-- ``RelayConnection`` - Individual relay connection management
-- ``RelayPool`` - Multiple relay connection pooling
-- WebSocket-based real-time messaging
+- ``Crypto``
+- ``NIP44``
+- ``NIP06``
 
-### Filtering and Utilities
-- ``Filter`` - Event filtering for subscriptions
-- ``ClientMessage`` and ``RelayMessage`` - Protocol message types
-- Comprehensive validation utilities
+### Event Types and Creation
+
+- ``NostrDirectMessage``
+- ``NostrFollowList``
+- ``NostrOpenTimestamps``
+- ``NIP09``
+- ``NIP13``
+- ``NIP17``
+- ``NIP23``
+- ``NIP25``
+- ``NIP51``
+
+### Content and Metadata
+
+- ``NIP10``
+- ``NIP19``
+- ``NIP21``
+- ``NIP27``
+- ``NIP40``
+- ``NIP50``
+- ``NIP56``
+- ``NIP58``
+- ``NIP65``
+
+### Networking and Discovery
+
+- ``NostrNIP05``
+- ``NIP11``
+- ``NIP42``
+- ``NIP57``
+- ``NIP59``
+
+### Validation and Utilities
+
+- ``Validation``
+- ``NostrError``
+
+### Type Aliases
+
+- ``PublicKey``
+- ``PrivateKey``
+- ``EventID``
+- ``Signature``
 
 ## Getting Started
 
-### Installation
-
-Add CoreNostr to your Swift package dependencies:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/your-org/CoreNostr", from: "1.0.0")
-]
-```
-
-### Basic Usage
+To start using CoreNostr, first generate a key pair:
 
 ```swift
 import CoreNostr
@@ -59,68 +83,46 @@ import CoreNostr
 // Generate a new key pair
 let keyPair = try CoreNostr.createKeyPair()
 
-// Create and sign a text note
-let textNote = try CoreNostr.createTextNote(
+// Create a text note
+let note = try CoreNostr.createTextNote(
     keyPair: keyPair,
-    content: "Hello, NOSTR world!"
+    content: "Hello, Nostr!"
 )
 
-// Connect to a relay
-let relay = RelayConnection()
-try await relay.connect(to: URL(string: "wss://relay.example.com")!)
-
-// Publish the event
-try await relay.send(.event(textNote))
-
-// Subscribe to events
-let filter = Filter.textNotes(limit: 10)
-try await relay.send(.req(subscriptionId: "feed", filters: [filter]))
-
-// Listen for messages
-for await message in relay.messages {
-    switch message {
-    case .event(let subId, let event):
-        print("Received: \(event.content)")
-    case .eose(let subId):
-        print("End of stored events for \(subId)")
-    default:
-        break
-    }
-}
+// Verify the event
+let isValid = try CoreNostr.verifyEvent(note)
 ```
 
-## Topics
+## NIP Support
 
-### Essentials
-- ``CoreNostr``
-- ``NostrEvent``
-- ``KeyPair``
-- ``RelayConnection``
+CoreNostr implements numerous NIPs (Nostr Implementation Possibilities):
 
-### Event Management
-- ``NostrEvent``
-- ``EventKind``
-- ``EventID``
-- ``Filter``
+- **NIP-01**: Basic protocol flow description
+- **NIP-06**: Basic key derivation from mnemonic seed phrase
+- **NIP-09**: Event deletion
+- **NIP-10**: Reply threading and mentions
+- **NIP-11**: Relay information document
+- **NIP-13**: Proof of Work
+- **NIP-17**: Private Direct Messages
+- **NIP-19**: bech32-encoded entities
+- **NIP-21**: nostr: URI scheme
+- **NIP-23**: Long-form Content
+- **NIP-25**: Reactions
+- **NIP-27**: Text Note References
+- **NIP-40**: Expiration Timestamp
+- **NIP-42**: Authentication of clients to relays
+- **NIP-44**: Encrypted Payloads (Versioned)
+- **NIP-50**: Search Capability
+- **NIP-51**: Lists
+- **NIP-56**: Reporting
+- **NIP-57**: Lightning Zaps
+- **NIP-58**: Badges
+- **NIP-59**: Gift Wrap
+- **NIP-65**: Relay List Metadata
 
-### Cryptography
-- ``KeyPair``
-- ``PublicKey``
-- ``PrivateKey``
-- ``Signature``
-- ``NostrCrypto``
+## Important Notes
 
-### Network Communication
-- ``RelayConnection``
-- ``RelayPool``
-- ``ClientMessage``
-- ``RelayMessage``
-- ``ConnectionState``
-
-### Error Handling
-- ``NostrError``
-
-## See Also
-
-- [NOSTR Protocol Specification](https://github.com/nostr-protocol/nips)
-- [NIP-01: Basic Protocol](https://github.com/nostr-protocol/nips/blob/master/01.md)
+- This library contains only protocol primitives and does not include networking code
+- Networking should be handled by the libraries that import CoreNostr
+- All cryptographic operations use industry-standard libraries
+- Comprehensive validation is performed on all inputs to ensure protocol compliance
