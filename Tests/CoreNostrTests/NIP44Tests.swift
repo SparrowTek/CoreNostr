@@ -16,14 +16,14 @@ struct NIP44Tests {
     let bobKeyPair: KeyPair
     
     init() throws {
-        aliceKeyPair = try KeyPair(privateKey: "0000000000000000000000000000000000000000000000000000000000000001")
-        bobKeyPair = try KeyPair(privateKey: "0000000000000000000000000000000000000000000000000000000000000002")
+        // Use fixed test keys for reproducible tests
+        aliceKeyPair = try KeyPair(privateKey: "7f3b02c9d3704396ff9b2a530f7e7c7411a5e77fc4f7b7b7c73030b0c3a36e54")
+        bobKeyPair = try KeyPair(privateKey: "b1e5c4a44fbd432089ddaa4aeba180de89fc4a34e66700d49e2307b9dc85a6f8")
     }
     
     @Test("Encrypt and decrypt simple message")
     func testEncryptDecryptSimple() throws {
         let plaintext = "Hello, World!"
-        
         // Alice encrypts for Bob
         let encrypted = try NIP44.encrypt(
             plaintext: plaintext,
@@ -33,7 +33,6 @@ struct NIP44Tests {
         
         // Check it's base64 encoded
         #expect(Data(base64Encoded: encrypted) != nil)
-        
         // Bob decrypts
         let decrypted = try NIP44.decrypt(
             payload: encrypted,
@@ -225,7 +224,7 @@ struct NIP44Tests {
     
     @Test("Invalid public key throws")
     func testInvalidPublicKeyThrows() throws {
-        #expect(throws: NIP44.NIP44Error.invalidPrivateKey) {
+        #expect(throws: NIP44.NIP44Error.invalidPublicKey) {
             _ = try NIP44.encrypt(
                 plaintext: "Test",
                 senderPrivateKey: aliceKeyPair.privateKey,

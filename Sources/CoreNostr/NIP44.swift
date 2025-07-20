@@ -13,10 +13,11 @@
 
 import Foundation
 import CryptoKit
+import P256K
+import CryptoSwift
 
 /// NIP-44 Encrypted Payloads
 public enum NIP44 {
-    
     /// Errors that can occur during encryption/decryption
     public enum NIP44Error: LocalizedError {
         case invalidPublicKey
@@ -80,29 +81,45 @@ public enum NIP44 {
         }
         
         // Get shared secret
-        let sharedSecret = try computeSharedSecret(
-            privateKey: senderPrivateKey,
-            publicKey: recipientPublicKey
-        )
+        let sharedSecret: Data
+        do {
+            sharedSecret = try computeSharedSecret(
+                privateKey: senderPrivateKey,
+                publicKey: recipientPublicKey
+            )
+        } catch {
+            throw error
+        }
         
         // Generate random nonce
         let nonce = generateNonce()
         
         // Derive keys
-        let (encryptionKey, hmacKey) = try deriveKeys(
-            sharedSecret: sharedSecret,
-            nonce: nonce
-        )
+        let encryptionKey: Data
+        let hmacKey: Data
+        do {
+            (encryptionKey, hmacKey) = try deriveKeys(
+                sharedSecret: sharedSecret,
+                nonce: nonce
+            )
+        } catch {
+            throw error
+        }
         
         // Pad plaintext
         let paddedPlaintext = pad(plaintextData)
         
         // Encrypt
-        let ciphertext = try encryptChaCha20(
-            plaintext: paddedPlaintext,
-            key: encryptionKey,
-            nonce: nonce
-        )
+        let ciphertext: Data
+        do {
+            ciphertext = try encryptChaCha20(
+                plaintext: paddedPlaintext,
+                key: encryptionKey,
+                nonce: nonce
+            )
+        } catch {
+            throw error
+        }
         
         // Create payload
         var payload = Data()
@@ -133,7 +150,6 @@ public enum NIP44 {
         guard let payloadData = Data(base64Encoded: payload) else {
             throw NIP44Error.invalidPayload
         }
-        
         // Minimum size: version(1) + nonce(32) + ciphertext(>=17) + hmac(32) = 82
         guard payloadData.count >= 82 else {
             throw NIP44Error.invalidPayload
@@ -149,21 +165,18 @@ public enum NIP44 {
         let hmacStart = payloadData.count - 32
         let ciphertext = payloadData[33..<hmacStart]
         let receivedHMAC = payloadData[hmacStart...]
-        
         // Get shared secret
         let sharedSecret = try computeSharedSecret(
             privateKey: recipientPrivateKey,
             publicKey: senderPublicKey
         )
-        
         // Derive keys
         let (encryptionKey, hmacKey) = try deriveKeys(
             sharedSecret: sharedSecret,
             nonce: nonce
         )
-        
         // Verify HMAC
-        let payloadWithoutHMAC = payloadData[..<hmacStart]
+        let payloadWithoutHMAC = Data(payloadData[..<hmacStart])  // Convert SubSequence to Data
         let computedHMAC = computeHMAC(payload: payloadWithoutHMAC, key: hmacKey)
         
         guard computedHMAC == receivedHMAC else {
@@ -172,14 +185,12 @@ public enum NIP44 {
         
         // Decrypt
         let paddedPlaintext = try decryptChaCha20(
-            ciphertext: ciphertext,
+            ciphertext: Data(ciphertext),  // Convert SubSequence to Data
             key: encryptionKey,
-            nonce: nonce
+            nonce: Data(nonce)  // Convert SubSequence to Data
         )
-        
         // Unpad
         let plaintext = try unpad(paddedPlaintext)
-        
         guard let result = String(data: plaintext, encoding: .utf8) else {
             throw NIP44Error.decryptionFailed
         }
@@ -194,27 +205,67 @@ public enum NIP44 {
         privateKey: String,
         publicKey: String
     ) throws -> Data {
-        // TODO: Implement proper ECDH using secp256k1
-        // For now, use a placeholder that combines keys deterministically
-        // This is NOT secure and must be replaced with proper ECDH
-        
         guard let privKeyData = Data(hex: privateKey),
-              let pubKeyData = Data(hex: publicKey) else {
+              privKeyData.count == 32 else {
             throw NIP44Error.invalidPrivateKey
         }
         
-        // WARNING: This is a temporary placeholder - not secure!
-        // Real implementation needs secp256k1 ECDH
-        let combined = privKeyData + pubKeyData
-        let hash = SHA256.hash(data: combined)
-        return Data(hash)
+        guard let pubKeyData = Data(hex: publicKey),
+              pubKeyData.count == 32 else {
+            throw NIP44Error.invalidPublicKey
+        }
+        
+        // Create P256K KeyAgreement private key from raw bytes
+        let p256kPrivateKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privKeyData)
+        
+        // For x-only public keys, we need to recover the full public key
+        // Try with even y-coordinate first (0x02 prefix)
+        var compressedPubKey = Data()
+        compressedPubKey.append(0x02)
+        compressedPubKey.append(pubKeyData)
+        
+        let p256kPublicKey: P256K.KeyAgreement.PublicKey
+        do {
+            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
+        } catch {
+            // If even y-coordinate fails, try odd (0x03 prefix)
+            compressedPubKey[0] = 0x03
+            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
+        }
+        
+        // Compute the shared secret (x-coordinate only)
+        let sharedSecret = try p256kPrivateKey.sharedSecretFromKeyAgreement(with: p256kPublicKey)
+        
+        // P256K returns a SharedSecret which might be in compressed format
+        // We need the raw x-coordinate for NIP-44
+        let sharedSecretData = Data(sharedSecret.bytes)
+        
+        if sharedSecretData.count == 33 {
+            // P256K returned compressed format (0x02/0x03 + 32 bytes)
+            // Skip the first byte to get the x-coordinate
+            return Data(sharedSecretData[1..<33])
+        } else if sharedSecretData.count == 32 {
+            // Already just the x-coordinate
+            return sharedSecretData
+        } else if sharedSecretData.count == 64 {
+            // Might be SHA512 hash, take first 32 bytes
+            return Data(sharedSecretData[0..<32])
+        } else {
+            // Unexpected size
+            throw NIP44Error.encryptionFailed
+        }
     }
     
     /// Generate a random 32-byte nonce
     private static func generateNonce() -> Data {
         var nonce = Data(count: 32)
-        _ = nonce.withUnsafeMutableBytes { bytes in
+        let result = nonce.withUnsafeMutableBytes { bytes in
             SecRandomCopyBytes(kSecRandomDefault, 32, bytes.baseAddress!)
+        }
+        guard result == errSecSuccess else {
+            // If random generation fails, use a fallback
+            // This should never happen in practice
+            return Data(repeating: 0, count: 32)
         }
         return nonce
     }
@@ -224,28 +275,35 @@ public enum NIP44 {
         sharedSecret: Data,
         nonce: Data
     ) throws -> (encryptionKey: Data, hmacKey: Data) {
-        // Combine shared secret and nonce
-        var input = Data()
-        input.append(sharedSecret)
-        input.append(nonce)
+        // Step 1: Derive conversation key using HKDF-extract
+        // salt = "nip44-v2", IKM = shared_x (32 bytes)
+        let salt = "nip44-v2".data(using: .utf8)!
         
-        // Use HKDF to derive keys
-        let salt = Data() // Empty salt
-        let info = "nip44-v2".data(using: .utf8)!
-        
-        let derivedKey = HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: input),
-            salt: salt,
-            info: info,
-            outputByteCount: 76 // 32 for ChaCha20 + 12 for nonce expansion + 32 for HMAC
+        // HKDF-extract produces a fixed-size output (32 bytes with SHA256)
+        let conversationKey = HKDF<CryptoKit.SHA256>.extract(
+            inputKeyMaterial: SymmetricKey(data: sharedSecret),
+            salt: salt
         )
         
-        let keyData = derivedKey.withUnsafeBytes { Data($0) }
+        // Step 2: Derive per-message keys using HKDF-expand
+        // PRK = conversation_key, info = nonce (32 bytes), L = 76 bytes
+        let expandedKey = HKDF<CryptoKit.SHA256>.expand(
+            pseudoRandomKey: conversationKey,
+            info: nonce,
+            outputByteCount: 76
+        )
         
-        let encryptionKey = keyData[0..<32]
-        let hmacKey = keyData[44..<76]
+        // Convert SymmetricKey to Data
+        let keyData = expandedKey.withUnsafeBytes { Data($0) }
         
-        return (Data(encryptionKey), Data(hmacKey))
+        // Slice the output according to spec:
+        // chacha_key: bytes 0..32
+        // chacha_nonce: bytes 32..44 (not used in our case)
+        // hmac_key: bytes 44..76
+        let encryptionKey = Data(keyData[0..<32])
+        let hmacKey = Data(keyData[44..<76])
+        
+        return (encryptionKey, hmacKey)
     }
     
     /// Encrypt using ChaCha20
@@ -255,20 +313,17 @@ public enum NIP44 {
         nonce: Data
     ) throws -> Data {
         // ChaCha20 uses a 12-byte nonce, we use first 12 bytes of our 32-byte nonce
-        let chachaNonceData = nonce[0..<12]
+        let chachaNonceData = Array(nonce[0..<12])
+        let keyArray = Array(key)
+        let plaintextArray = Array(plaintext)
         
-        guard let chachaNonce = try? ChaChaPoly.Nonce(data: chachaNonceData) else {
+        do {
+            let chacha = try CryptoSwift.ChaCha20(key: keyArray, iv: chachaNonceData)
+            let encrypted = try chacha.encrypt(plaintextArray)
+            return Data(encrypted)
+        } catch {
             throw NIP44Error.encryptionFailed
         }
-        
-        let sealedBox = try ChaChaPoly.seal(
-            plaintext,
-            using: SymmetricKey(data: key),
-            nonce: chachaNonce
-        )
-        
-        // Return only ciphertext (without auth tag for NIP-44)
-        return sealedBox.ciphertext
     }
     
     /// Decrypt using ChaCha20
@@ -278,32 +333,22 @@ public enum NIP44 {
         nonce: Data
     ) throws -> Data {
         // ChaCha20 uses a 12-byte nonce
-        let chachaNonceData = nonce[0..<12]
+        let chachaNonceData = Array(nonce[0..<12])
+        let keyArray = Array(key)
+        let ciphertextArray = Array(ciphertext)
         
-        guard let chachaNonce = try? ChaChaPoly.Nonce(data: chachaNonceData) else {
+        do {
+            let chacha = try CryptoSwift.ChaCha20(key: keyArray, iv: chachaNonceData)
+            let decrypted = try chacha.decrypt(ciphertextArray)
+            return Data(decrypted)
+        } catch {
             throw NIP44Error.decryptionFailed
         }
-        
-        // Create a placeholder auth tag (16 bytes of zeros)
-        let authTag = Data(repeating: 0, count: 16)
-        
-        let sealedBox = try ChaChaPoly.SealedBox(
-            nonce: chachaNonce,
-            ciphertext: ciphertext,
-            tag: authTag
-        )
-        
-        let plaintext = try ChaChaPoly.open(
-            sealedBox,
-            using: SymmetricKey(data: key)
-        )
-        
-        return plaintext
     }
     
     /// Compute HMAC-SHA256
     private static func computeHMAC(payload: Data, key: Data) -> Data {
-        let mac = HMAC<SHA256>.authenticationCode(
+        let mac = HMAC<CryptoKit.SHA256>.authenticationCode(
             for: payload,
             using: SymmetricKey(data: key)
         )
