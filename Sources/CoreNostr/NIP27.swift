@@ -81,7 +81,7 @@ public struct NostrReference: Sendable, Equatable {
 // MARK: - Text Processing
 
 /// Utilities for processing text with nostr: references
-public struct NostrTextProcessor {
+public struct NostrTextProcessor: Sendable {
     /// Regular expression to find nostr: URIs in text
     private static let nostrURIPattern = #"nostr:(npub|nsec|note|nprofile|nevent|nrelay|naddr)1[023456789acdefghjklmnpqrstuvwxyz]+"#
     

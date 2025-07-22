@@ -55,7 +55,7 @@ public struct NostrNIP05Identifier: Codable, Hashable, Sendable {
     public init(identifier: String) throws {
         let components = identifier.split(separator: "@", maxSplits: 1)
         guard components.count == 2 else {
-            throw NostrError.invalidEvent("Invalid NIP-05 identifier format")
+            throw NostrError.invalidNIP05(identifier: identifier, reason: "Must be in format 'name@domain.com' or '_@domain.com'")
         }
         
         let localPart = String(components[0]).lowercased()
@@ -64,7 +64,7 @@ public struct NostrNIP05Identifier: Codable, Hashable, Sendable {
         // Validate local part contains only allowed characters
         let allowedLocalChars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-_.")
         guard localPart.unicodeScalars.allSatisfy({ allowedLocalChars.contains($0) }) else {
-            throw NostrError.invalidEvent("Invalid characters in local part")
+            throw NostrError.invalidNIP05(identifier: identifier, reason: "Local part contains invalid characters")
         }
         
         // Basic domain validation
@@ -72,7 +72,7 @@ public struct NostrNIP05Identifier: Codable, Hashable, Sendable {
               domain.contains("."),
               !domain.hasPrefix("."),
               !domain.hasSuffix(".") else {
-            throw NostrError.invalidEvent("Invalid domain format")
+            throw NostrError.invalidNIP05(identifier: identifier, reason: "Domain format is invalid")
         }
         
         self.localPart = localPart
@@ -188,7 +188,7 @@ public final class NostrNIP05Verifier: Sendable {
     /// - Throws: Network or parsing errors
     public func fetchWellKnownResponse(for identifier: NostrNIP05Identifier) async throws -> NostrNIP05Response {
         guard let url = identifier.wellKnownURL else {
-            throw NostrError.invalidEvent("Invalid well-known URL")
+            throw NostrError.invalidURI(uri: identifier.identifier, reason: "Failed to construct well-known URL")
         }
         
         var request = URLRequest(url: url)
@@ -201,12 +201,12 @@ public final class NostrNIP05Verifier: Sendable {
         // Check for HTTP errors
         if let httpResponse = response as? HTTPURLResponse {
             guard httpResponse.statusCode == 200 else {
-                throw NostrError.networkError("HTTP \(httpResponse.statusCode)")
+                throw NostrError.networkError(operation: .receive, reason: "HTTP error \(httpResponse.statusCode) from well-known endpoint")
             }
             
             // Security constraint: no redirects allowed
             if httpResponse.url != url {
-                throw NostrError.networkError("Redirects not allowed for well-known endpoints")
+                throw NostrError.networkError(operation: .receive, reason: "Redirects not allowed for well-known endpoints per NIP-05")
             }
         }
         
@@ -214,7 +214,7 @@ public final class NostrNIP05Verifier: Sendable {
         do {
             return try JSONDecoder().decode(NostrNIP05Response.self, from: data)
         } catch {
-            throw NostrError.serializationError("Failed to parse well-known JSON: \(error)")
+            throw NostrError.serializationError(type: "NIP-05 well-known response", reason: "Failed to parse JSON: \(error.localizedDescription)")
         }
     }
 }

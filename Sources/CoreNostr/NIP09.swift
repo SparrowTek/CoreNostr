@@ -52,7 +52,7 @@ public extension CoreNostr {
         keyPair: KeyPair
     ) throws -> NostrEvent {
         guard !eventIds.isEmpty else {
-            throw NostrError.invalidEvent("Cannot create deletion event with no event IDs")
+            throw NostrError.validationError(field: "eventIds", reason: "At least one event ID must be provided for deletion")
         }
         
         var tags: [[String]] = []

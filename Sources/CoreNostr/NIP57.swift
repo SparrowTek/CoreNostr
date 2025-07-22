@@ -145,7 +145,7 @@ public struct ZapReceipt: Sendable {
 // MARK: - Lightning Address
 
 /// Utilities for working with Lightning addresses and LNURL
-public struct LightningAddress {
+public struct LightningAddress: Sendable {
     /// Parse a Lightning address (e.g., "alice@example.com")
     public static func parse(_ address: String) -> (name: String, domain: String)? {
         let parts = address.split(separator: "@")
@@ -300,7 +300,7 @@ public extension NostrEvent {
 // MARK: - Zap Statistics
 
 /// Helper for calculating zap statistics
-public struct ZapStats {
+public struct ZapStats: Sendable {
     /// Calculate total zaps for an event
     public static func totalZapsForEvent(_ eventId: String, from receipts: [NostrEvent]) -> (count: Int, totalAmount: Int64) {
         let eventZaps = receipts.filter { receipt in

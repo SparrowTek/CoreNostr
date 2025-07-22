@@ -204,7 +204,7 @@ extension Filter {
         }
         
         /// Sentiment options for search filtering.
-        public enum Sentiment: String {
+        public enum Sentiment: String, Sendable {
             case negative
             case neutral
             case positive

@@ -66,7 +66,7 @@ public struct AuthResponse: Sendable {
 // MARK: - Authentication Error
 
 /// Errors that can occur during authentication
-public enum AuthenticationError: LocalizedError {
+public enum AuthenticationError: LocalizedError, Sendable {
     case invalidChallenge
     case challengeExpired
     case invalidRelayURL

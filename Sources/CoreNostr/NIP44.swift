@@ -5,10 +5,6 @@
 //  NIP-44: Encrypted Payloads
 //  https://github.com/nostr-protocol/nips/blob/master/44.md
 //
-//  IMPORTANT: This implementation currently uses a placeholder for ECDH
-//  shared secret computation. Proper secp256k1 ECDH implementation is
-//  required for production use. The current implementation will not
-//  interoperate with other NIP-44 implementations.
 //
 
 import Foundation

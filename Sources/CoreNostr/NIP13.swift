@@ -6,10 +6,10 @@ import CryptoKit
 ///
 /// Proof of Work for Nostr events to prevent spam by requiring computational work
 
-public struct ProofOfWork {
+public struct ProofOfWork: Sendable {
     
     /// Error types for Proof of Work operations
-    public enum PoWError: Error, LocalizedError {
+    public enum PoWError: Error, LocalizedError, Sendable {
         case invalidDifficulty
         case miningCancelled
         case miningTimeout

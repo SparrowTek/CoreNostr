@@ -283,7 +283,7 @@ public extension CoreNostr {
         
         guard let data = decrypted.data(using: .utf8),
               let tags = try JSONSerialization.jsonObject(with: data) as? [[String]] else {
-            throw NostrError.invalidEvent("Failed to parse decrypted list items")
+            throw NostrError.serializationError(type: "list items", reason: "Failed to parse decrypted JSON array")
         }
         
         return tags.compactMap { ListItem(fromTag: $0) }

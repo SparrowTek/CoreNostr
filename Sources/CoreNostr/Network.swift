@@ -28,12 +28,12 @@ public enum ClientMessage: Codable, Sendable {
         case .event(let event):
             let eventData = try encoder.encode(event)
             guard let eventDict = try JSONSerialization.jsonObject(with: eventData) as? [String: Any] else {
-                throw NostrError.serializationError("Failed to serialize event")
+                throw NostrError.serializationError(type: "NostrEvent", reason: "Failed to encode event to JSON")
             }
             let jsonArray: [Any] = ["EVENT", eventDict]
             let data = try JSONSerialization.data(withJSONObject: jsonArray, options: [.withoutEscapingSlashes])
             guard let jsonString = String(data: data, encoding: .utf8) else {
-                throw NostrError.serializationError("Failed to encode client message")
+                throw NostrError.serializationError(type: "ClientMessage", reason: "Failed to encode message array to JSON")
             }
             return jsonString
             
@@ -42,13 +42,13 @@ public enum ClientMessage: Codable, Sendable {
             for filter in filters {
                 let filterData = try encoder.encode(filter)
                 guard let filterDict = try JSONSerialization.jsonObject(with: filterData) as? [String: Any] else {
-                    throw NostrError.serializationError("Failed to serialize filter")
+                    throw NostrError.serializationError(type: "Filter", reason: "Failed to encode filter to JSON")
                 }
                 jsonArray.append(filterDict)
             }
             let data = try JSONSerialization.data(withJSONObject: jsonArray, options: [.withoutEscapingSlashes])
             guard let jsonString = String(data: data, encoding: .utf8) else {
-                throw NostrError.serializationError("Failed to encode client message")
+                throw NostrError.serializationError(type: "ClientMessage", reason: "Failed to encode message array to JSON")
             }
             return jsonString
             
@@ -56,7 +56,7 @@ public enum ClientMessage: Codable, Sendable {
             let jsonArray: [Any] = ["CLOSE", subscriptionId]
             let data = try JSONSerialization.data(withJSONObject: jsonArray, options: [.withoutEscapingSlashes])
             guard let jsonString = String(data: data, encoding: .utf8) else {
-                throw NostrError.serializationError("Failed to encode client message")
+                throw NostrError.serializationError(type: "ClientMessage", reason: "Failed to encode message array to JSON")
             }
             return jsonString
         }
@@ -94,7 +94,7 @@ public enum RelayMessage: Codable, Sendable {
         guard let data = jsonString.data(using: .utf8),
               let jsonArray = try JSONSerialization.jsonObject(with: data) as? [Any],
               let messageType = jsonArray.first as? String else {
-            throw NostrError.serializationError("Invalid message format")
+            throw NostrError.serializationError(type: "RelayMessage", reason: "Message must be a JSON array")
         }
         
         switch messageType {
@@ -102,7 +102,7 @@ public enum RelayMessage: Codable, Sendable {
             guard jsonArray.count >= 3,
                   let subscriptionId = jsonArray[1] as? String,
                   let eventDict = jsonArray[2] as? [String: Any] else {
-                throw NostrError.serializationError("Invalid EVENT message format")
+                throw NostrError.serializationError(type: "EVENT message", reason: "Expected format: [\"EVENT\", \"subscription_id\", {event_object}]")
             }
             
             let eventData = try JSONSerialization.data(withJSONObject: eventDict)
@@ -113,7 +113,7 @@ public enum RelayMessage: Codable, Sendable {
             guard jsonArray.count >= 3,
                   let eventId = jsonArray[1] as? String,
                   let accepted = jsonArray[2] as? Bool else {
-                throw NostrError.serializationError("Invalid OK message format")
+                throw NostrError.serializationError(type: "OK message", reason: "Expected format: [\"OK\", \"event_id\", accepted: bool, \"message\"]")
             }
             let message = jsonArray.count > 3 ? jsonArray[3] as? String : nil
             return .ok(eventId: eventId, accepted: accepted, message: message)
@@ -121,14 +121,14 @@ public enum RelayMessage: Codable, Sendable {
         case "EOSE":
             guard jsonArray.count >= 2,
                   let subscriptionId = jsonArray[1] as? String else {
-                throw NostrError.serializationError("Invalid EOSE message format")
+                throw NostrError.serializationError(type: "EOSE message", reason: "Expected format: [\"EOSE\", \"subscription_id\"]")
             }
             return .eose(subscriptionId: subscriptionId)
             
         case "CLOSED":
             guard jsonArray.count >= 2,
                   let subscriptionId = jsonArray[1] as? String else {
-                throw NostrError.serializationError("Invalid CLOSED message format")
+                throw NostrError.serializationError(type: "CLOSED message", reason: "Expected format: [\"CLOSED\", \"subscription_id\", \"message\"]")
             }
             let message = jsonArray.count > 2 ? jsonArray[2] as? String : nil
             return .closed(subscriptionId: subscriptionId, message: message)
@@ -136,19 +136,19 @@ public enum RelayMessage: Codable, Sendable {
         case "NOTICE":
             guard jsonArray.count >= 2,
                   let message = jsonArray[1] as? String else {
-                throw NostrError.serializationError("Invalid NOTICE message format")
+                throw NostrError.serializationError(type: "NOTICE message", reason: "Expected format: [\"NOTICE\", \"message\"]")
             }
             return .notice(message: message)
             
         case "AUTH":
             guard jsonArray.count >= 2,
                   let challenge = jsonArray[1] as? String else {
-                throw NostrError.serializationError("Invalid AUTH message format")
+                throw NostrError.serializationError(type: "AUTH message", reason: "Expected format: [\"AUTH\", \"challenge\"]")
             }
             return .auth(challenge: challenge)
             
         default:
-            throw NostrError.serializationError("Unknown message type: \(messageType)")
+            throw NostrError.protocolViolation(reason: "Unknown message type: '\(messageType)'. Expected EVENT, OK, EOSE, CLOSED, NOTICE, or AUTH")
         }
     }
 }
@@ -234,7 +234,7 @@ public class RelayConnection {
     /// - Throws: ``NostrError/networkError(_:)`` if connection fails
     public func connect(to url: URL) async throws {
         guard state == .disconnected else {
-            throw NostrError.networkError("Already connected or connecting")
+            throw NostrError.networkError(operation: .connect, reason: "Already connected or connection in progress")
         }
         
         self.url = url
@@ -272,7 +272,7 @@ public class RelayConnection {
     /// - Throws: ``NostrError/networkError(_:)`` if sending fails or not connected
     public func send(_ message: ClientMessage) async throws {
         guard state == .connected, let webSocketTask = webSocketTask else {
-            throw NostrError.networkError("Not connected to relay")
+            throw NostrError.networkError(operation: .send, reason: "Not connected to relay")
         }
         
         do {
@@ -280,7 +280,7 @@ public class RelayConnection {
             let webSocketMessage = URLSessionWebSocketTask.Message.string(messageString)
             try await webSocketTask.send(webSocketMessage)
         } catch {
-            throw NostrError.networkError("Failed to send message: \(error.localizedDescription)")
+            throw NostrError.networkError(operation: .send, reason: "WebSocket send failed: \(error.localizedDescription)")
         }
     }
     
@@ -366,7 +366,7 @@ public class RelayPool {
     /// - Throws: ``NostrError/networkError(_:)`` if the relay already exists or connection fails
     public func addRelay(_ url: URL) async throws {
         guard connections[url] == nil else {
-            throw NostrError.networkError("Relay already exists")
+            throw NostrError.validationError(field: "relayURL", reason: "Relay with URL '\(url)' already exists in pool")
         }
         
         let connection = RelayConnection()

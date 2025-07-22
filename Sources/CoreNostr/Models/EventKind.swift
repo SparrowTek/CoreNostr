@@ -8,7 +8,7 @@
 /// Standardized event kinds defined by NIP-01.
 ///
 /// Event kinds determine how the event content should be interpreted by clients.
-public enum EventKind: Int, CaseIterable, Sendable {
+public enum EventKind: Int, CaseIterable, Sendable, Codable {
     /// Set metadata about the user (profile information)
     case setMetadata = 0
     

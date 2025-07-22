@@ -392,7 +392,7 @@ public extension Filter {
 
 // MARK: - Article Discovery Helpers
 
-public struct ArticleDiscovery {
+public struct ArticleDiscovery: Sendable {
     /// Find all articles by hashtag
     public static func byHashtag(
         _ hashtag: String,

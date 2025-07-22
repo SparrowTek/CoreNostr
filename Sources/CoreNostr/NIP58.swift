@@ -135,13 +135,13 @@ public enum NIP58 {
         keyPair: KeyPair
     ) throws -> NostrEvent {
         guard badgeDefinition.kind == badgeDefinitionKind else {
-            throw NostrError.invalidEvent("Event is not a badge definition")
+            throw NostrError.invalidEvent(reason: .invalidKind)
         }
         
         // Extract d tag value from badge definition
         guard let dTag = badgeDefinition.tags.first(where: { $0.count >= 2 && $0[0] == "d" }),
               let identifier = dTag.count >= 2 ? dTag[1] : nil else {
-            throw NostrError.invalidEvent("Badge definition missing d tag")
+            throw NostrError.missingField(field: "d tag", in: "badge definition")
         }
         
         var tags: [[String]] = []
@@ -212,17 +212,17 @@ public enum NIP58 {
         /// Creates a badge display from a badge definition and award
         public init(definition: NostrEvent, award: NostrEvent) throws {
             guard definition.kind == badgeDefinitionKind else {
-                throw NostrError.invalidEvent("Not a badge definition event")
+                throw NostrError.invalidEvent(reason: .invalidKind)
             }
             
             guard award.kind == badgeAwardKind else {
-                throw NostrError.invalidEvent("Not a badge award event")
+                throw NostrError.invalidEvent(reason: .invalidKind)
             }
             
             // Extract d tag from definition
             guard let dTag = definition.tags.first(where: { $0.count >= 2 && $0[0] == "d" }),
                   let identifier = dTag.count >= 2 ? dTag[1] : nil else {
-                throw NostrError.invalidEvent("Badge definition missing d tag")
+                throw NostrError.missingField(field: "d tag", in: "badge definition")
             }
             
             self.badgeDefinitionTag = "\(badgeDefinitionKind):\(definition.pubkey):\(identifier)"

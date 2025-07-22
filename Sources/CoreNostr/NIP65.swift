@@ -178,7 +178,7 @@ public extension NostrEvent {
 // MARK: - Relay Discovery Helper
 
 /// Helper for discovering relays for users
-public struct RelayDiscovery {
+public struct RelayDiscovery: Sendable {
     /// Get suggested relays to download events from a specific author
     ///
     /// According to NIP-65:

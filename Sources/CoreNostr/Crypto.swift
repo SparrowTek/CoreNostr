@@ -1,5 +1,6 @@
 import Foundation
 import Crypto
+import CryptoKit
 import P256K
 import CryptoSwift
 
@@ -43,7 +44,7 @@ public struct KeyPair: Sendable, Codable {
         self.privateKey = privateKey
         
         guard let privateKeyData = Data(hex: privateKey) else {
-            throw NostrError.cryptographyError("Invalid private key format")
+            throw NostrError.invalidPrivateKey(reason: "Invalid hexadecimal format")
         }
         
         let p256kPrivateKey = try P256K.Schnorr.PrivateKey(dataRepresentation: privateKeyData)
@@ -68,7 +69,7 @@ public struct KeyPair: Sendable, Codable {
     /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
     public func sign(_ data: Data) throws -> Signature {
         guard let privateKeyData = Data(hex: privateKey) else {
-            throw NostrError.cryptographyError("Invalid private key format")
+            throw NostrError.invalidPrivateKey(reason: "Invalid hexadecimal format")
         }
         
         let p256kPrivateKey = try P256K.Schnorr.PrivateKey(dataRepresentation: privateKeyData)
@@ -102,7 +103,7 @@ public struct KeyPair: Sendable, Codable {
         
         guard let publicKeyData = Data(hex: publicKey),
               let signatureData = Data(hex: signature) else {
-            throw NostrError.cryptographyError("Invalid key or signature format")
+            throw NostrError.cryptographyError(operation: .verification, reason: "Invalid hexadecimal format for key or signature")
         }
         
         let p256kPublicKey = P256K.Schnorr.XonlyKey(dataRepresentation: publicKeyData)
@@ -126,7 +127,7 @@ public struct KeyPair: Sendable, Codable {
         // Verify the event ID matches
         let calculatedId = event.calculateId()
         guard calculatedId == event.id else {
-            throw NostrError.invalidEvent("Event ID mismatch")
+            throw NostrError.invalidEventId(expected: calculatedId, actual: event.id)
         }
         
         // Verify the signature
@@ -146,7 +147,7 @@ public struct KeyPair: Sendable, Codable {
               privateKeyData.count == 32,
               let publicKeyData = Data(hex: recipientPublicKey),
               publicKeyData.count == 32 else {
-            throw NostrError.cryptographyError("Invalid key format")
+            throw NostrError.encryptionError(operation: .keyExchange, reason: "Invalid key format or length")
         }
         
         // Create P256K KeyAgreement private key
@@ -179,8 +180,32 @@ public struct KeyPair: Sendable, Codable {
         } else if sharedSecretData.count == 32 {
             return sharedSecretData
         } else {
-            throw NostrError.cryptographyError("Unexpected shared secret size")
+            throw NostrError.encryptionError(operation: .keyExchange, reason: "Unexpected shared secret size: \(sharedSecretData.count) bytes")
         }
+    }
+    
+    /// Encrypts a message to a recipient using NIP-04 encryption.
+    /// 
+    /// - Parameters:
+    ///   - message: The plaintext message to encrypt
+    ///   - recipientPublicKey: The recipient's public key
+    /// - Returns: Base64-encoded encrypted message with IV in format "encrypted?iv=base64_iv"
+    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    public func encrypt(message: String, to recipientPublicKey: PublicKey) throws -> String {
+        let sharedSecret = try getSharedSecret(with: recipientPublicKey)
+        return try NostrCrypto.encryptMessage(message, with: sharedSecret)
+    }
+    
+    /// Decrypts a message from a sender using NIP-04 decryption.
+    /// 
+    /// - Parameters:
+    ///   - encryptedContent: The encrypted content in format "encrypted?iv=base64_iv"
+    ///   - senderPublicKey: The sender's public key
+    /// - Returns: The decrypted plaintext message
+    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    public func decrypt(message encryptedContent: String, from senderPublicKey: PublicKey) throws -> String {
+        let sharedSecret = try getSharedSecret(with: senderPublicKey)
+        return try NostrCrypto.decryptMessage(encryptedContent, with: sharedSecret)
     }
 }
 
@@ -214,7 +239,7 @@ extension Data {
     /// Converts Data to a hexadecimal string representation.
     /// 
     /// - Returns: Lowercase hexadecimal string
-    var hex: String {
+    public var hex: String {
         return self.map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -222,7 +247,7 @@ extension Data {
 // MARK: - Utility Functions
 
 /// Utility functions for NOSTR cryptographic operations and validation.
-public struct NostrCrypto {
+public struct NostrCrypto: Sendable {
     /// Generates an event ID for the given event.
     /// 
     /// - Parameter event: The event to generate an ID for
@@ -274,7 +299,7 @@ public struct NostrCrypto {
     /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption fails
     public static func encryptMessage(_ message: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
-            throw NostrError.cryptographyError("Shared secret must be 32 bytes")
+            throw NostrError.encryptionError(operation: .encrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
         }
         
         // NIP-04 specifies AES-256-CBC encryption
@@ -292,7 +317,7 @@ public struct NostrCrypto {
             
             return "\(encryptedBase64)?iv=\(ivBase64)"
         } catch {
-            throw NostrError.cryptographyError("Encryption failed: \(error)")
+            throw NostrError.encryptionError(operation: .encrypt, reason: "AES-256-CBC encryption failed: \(error.localizedDescription)")
         }
     }
     
@@ -307,14 +332,14 @@ public struct NostrCrypto {
     /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
     public static func decryptMessage(_ encryptedContent: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
-            throw NostrError.cryptographyError("Shared secret must be 32 bytes")
+            throw NostrError.encryptionError(operation: .decrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
         }
         
         // Parse the content format: "encrypted?iv=base64_iv"
         let components = encryptedContent.split(separator: "?", maxSplits: 1)
         guard components.count == 2,
               let ivParam = components[1].split(separator: "=", maxSplits: 1).last else {
-            throw NostrError.cryptographyError("Invalid encrypted content format")
+            throw NostrError.encryptionError(operation: .decrypt, reason: "Invalid encrypted content format. Expected 'encrypted?iv=base64_iv'")
         }
         
         let encryptedBase64 = String(components[0])
@@ -323,7 +348,7 @@ public struct NostrCrypto {
         guard let encryptedData = Data(base64Encoded: encryptedBase64),
               let iv = Data(base64Encoded: ivBase64),
               iv.count == 16 else {
-            throw NostrError.cryptographyError("Invalid base64 data or IV")
+            throw NostrError.encryptionError(operation: .decrypt, reason: "Invalid base64 encoding or IV must be 16 bytes")
         }
         
         do {
@@ -333,12 +358,12 @@ public struct NostrCrypto {
             let decryptedData = Data(decrypted)
             
             guard let decryptedString = String(data: decryptedData, encoding: .utf8) else {
-                throw NostrError.cryptographyError("Decrypted data is not valid UTF-8")
+                throw NostrError.encryptionError(operation: .decrypt, reason: "Decrypted data is not valid UTF-8 text")
             }
             
             return decryptedString
         } catch {
-            throw NostrError.cryptographyError("Decryption failed: \(error)")
+            throw NostrError.encryptionError(operation: .decrypt, reason: "AES-256-CBC decryption failed: \(error.localizedDescription)")
         }
     }
 }
@@ -346,7 +371,7 @@ public struct NostrCrypto {
 // MARK: - BIP39 Implementation
 
 /// BIP39 mnemonic word list and functionality
-public struct BIP39 {
+public struct BIP39: Sendable {
     /// Complete BIP39 English wordlist (2048 words)
     private static let wordlist: [String] = [
         "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd", "abuse",
@@ -562,7 +587,7 @@ public struct BIP39 {
     /// - Throws: NostrError if invalid strength
     public static func generateEntropy(strength: Int = 256) throws -> Data {
         guard [128, 160, 192, 224, 256].contains(strength) else {
-            throw NostrError.cryptographyError("Invalid entropy strength. Must be 128, 160, 192, 224, or 256 bits")
+            throw NostrError.cryptographyError(operation: .randomGeneration, reason: "Invalid entropy strength: \(strength) bits. Must be 128, 160, 192, 224, or 256 bits")
         }
         
         let byteCount = strength / 8
@@ -572,7 +597,7 @@ public struct BIP39 {
         }
         
         guard result == errSecSuccess else {
-            throw NostrError.cryptographyError("Failed to generate secure random entropy")
+            throw NostrError.cryptographyError(operation: .randomGeneration, reason: "Failed to generate secure random entropy")
         }
         
         return randomBytes
@@ -585,7 +610,7 @@ public struct BIP39 {
     public static func entropyToMnemonic(_ entropy: Data) throws -> String {
         let entropyBits = entropy.count * 8
         guard [128, 160, 192, 224, 256].contains(entropyBits) else {
-            throw NostrError.cryptographyError("Invalid entropy length")
+            throw NostrError.cryptographyError(operation: .keyGeneration, reason: "Invalid entropy length: \(entropy.count) bytes. Expected 16, 20, 24, 28, or 32 bytes")
         }
         
         // Calculate checksum
@@ -644,7 +669,7 @@ public struct BIP39 {
             
             return Data(derivedBytes)
         } catch {
-            throw NostrError.cryptographyError("PBKDF2 derivation failed: \(error)")
+            throw NostrError.cryptographyError(operation: .keyDerivation, reason: "PBKDF2 derivation failed: \(error.localizedDescription)")
         }
     }
     
@@ -661,9 +686,9 @@ public struct BIP39 {
 // MARK: - BIP32 Implementation
 
 /// BIP32 hierarchical deterministic key derivation
-public struct BIP32 {
+public struct BIP32: Sendable {
     /// Extended key structure
-    public struct ExtendedKey {
+    public struct ExtendedKey: Sendable {
         public let key: Data
         public let chainCode: Data
         public let depth: UInt8
@@ -685,7 +710,7 @@ public struct BIP32 {
     /// - Throws: NostrError if derivation fails
     public static func createMasterKey(from seed: Data) throws -> ExtendedKey {
         guard seed.count >= 16 && seed.count <= 64 else {
-            throw NostrError.cryptographyError("Invalid seed length")
+            throw NostrError.keyDerivationFailed(path: nil, reason: "Invalid seed length: \(seed.count) bytes. Expected 16-64 bytes")
         }
         
         // HMAC-SHA512 with "Bitcoin seed" as key
@@ -718,7 +743,7 @@ public struct BIP32 {
             data.append(parent.key)
         } else {
             // For non-hardened, we'd need the public key, but for Nostr we only use hardened derivation
-            throw NostrError.cryptographyError("Non-hardened derivation not supported")
+            throw NostrError.keyDerivationFailed(path: "index \(index)", reason: "Non-hardened derivation not supported for Nostr")
         }
         
         // Append index as big-endian 32-bit integer
@@ -736,13 +761,13 @@ public struct BIP32 {
         // However, for simplicity and since we're using hardened derivation,
         // we can use the derived key directly if it's valid
         guard childKeyData.count == 32 else {
-            throw NostrError.cryptographyError("Invalid child key derivation")
+            throw NostrError.keyDerivationFailed(path: "child index \(index)", reason: "Invalid child key derivation result")
         }
         
         // Verify the key is valid (non-zero and less than curve order)
         let childKeyHex = childKeyData.hex
         guard NostrCrypto.isValidPrivateKey(childKeyHex) else {
-            throw NostrError.cryptographyError("Invalid derived private key")
+            throw NostrError.keyDerivationFailed(path: "child index \(index)", reason: "Derived private key is invalid or outside curve order")
         }
         
         return ExtendedKey(
@@ -758,7 +783,7 @@ public struct BIP32 {
 // MARK: - NIP-06 Implementation
 
 /// NIP-06: Basic key derivation from mnemonic seed phrase
-public struct NIP06 {
+public struct NIP06: Sendable {
     /// Derives a Nostr key pair from mnemonic using the standard path m/44'/1237'/account'/0/0
     /// - Parameters:
     ///   - mnemonic: BIP39 mnemonic phrase
@@ -796,6 +821,95 @@ public struct NIP06 {
         let mnemonic = try BIP39.generateMnemonic(strength: strength)
         let keyPair = try deriveKeyPair(from: mnemonic, passphrase: passphrase, account: account)
         return (mnemonic, keyPair)
+    }
+    
+    /// Generates cryptographically secure random bytes.
+    /// 
+    /// - Parameter count: The number of random bytes to generate
+    /// - Returns: Random bytes as Data
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if random generation fails
+    public static func randomBytes(count: Int) throws -> Data {
+        var bytes = Data(count: count)
+        let result = bytes.withUnsafeMutableBytes { buffer in
+            SecRandomCopyBytes(kSecRandomDefault, count, buffer.baseAddress!)
+        }
+        
+        guard result == errSecSuccess else {
+            throw NostrError.cryptographyError(operation: .keyGeneration, reason: "Failed to generate random bytes")
+        }
+        
+        return bytes
+    }
+    
+    /// Computes SHA-256 hash of the given data.
+    /// 
+    /// - Parameter data: The data to hash
+    /// - Returns: 32-byte hash result
+    public static func sha256(_ data: Data) -> Data {
+        let digest = CryptoKit.SHA256.hash(data: data)
+        return Data(digest)
+    }
+    
+    /// Computes HMAC-SHA256 of the given message with key.
+    /// 
+    /// - Parameters:
+    ///   - key: The secret key
+    ///   - message: The message to authenticate
+    /// - Returns: 32-byte HMAC result
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if HMAC computation fails
+    public static func hmacSHA256(key: Data, message: Data) throws -> Data {
+        let mac = HMAC<CryptoKit.SHA256>.authenticationCode(for: message, using: SymmetricKey(data: key))
+        return Data(mac)
+    }
+    
+    /// Encrypts data using AES-256-CBC.
+    /// 
+    /// - Parameters:
+    ///   - plaintext: The data to encrypt
+    ///   - key: 32-byte encryption key
+    ///   - iv: 16-byte initialization vector
+    /// - Returns: Encrypted data
+    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    public static func aesEncrypt(plaintext: Data, key: Data, iv: Data) throws -> Data {
+        guard key.count == 32 else {
+            throw NostrError.encryptionError(operation: .encrypt, reason: "Key must be 32 bytes")
+        }
+        guard iv.count == 16 else {
+            throw NostrError.encryptionError(operation: .encrypt, reason: "IV must be 16 bytes")
+        }
+        
+        do {
+            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
+            let encrypted = try aes.encrypt(Array(plaintext))
+            return Data(encrypted)
+        } catch {
+            throw NostrError.encryptionError(operation: .encrypt, reason: error.localizedDescription)
+        }
+    }
+    
+    /// Decrypts data using AES-256-CBC.
+    /// 
+    /// - Parameters:
+    ///   - ciphertext: The data to decrypt
+    ///   - key: 32-byte decryption key
+    ///   - iv: 16-byte initialization vector
+    /// - Returns: Decrypted data
+    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    public static func aesDecrypt(ciphertext: Data, key: Data, iv: Data) throws -> Data {
+        guard key.count == 32 else {
+            throw NostrError.encryptionError(operation: .decrypt, reason: "Key must be 32 bytes")
+        }
+        guard iv.count == 16 else {
+            throw NostrError.encryptionError(operation: .decrypt, reason: "IV must be 16 bytes")
+        }
+        
+        do {
+            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
+            let decrypted = try aes.decrypt(Array(ciphertext))
+            return Data(decrypted)
+        } catch {
+            throw NostrError.encryptionError(operation: .decrypt, reason: error.localizedDescription)
+        }
     }
 }
 

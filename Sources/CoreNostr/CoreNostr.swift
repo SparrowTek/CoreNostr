@@ -143,7 +143,7 @@ public struct CoreNostr {
         
         let jsonData = try JSONSerialization.data(withJSONObject: metadata)
         guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-            throw NostrError.serializationError("Failed to serialize metadata")
+            throw NostrError.serializationError(type: "metadata", reason: "Failed to convert metadata to UTF-8 string")
         }
         
         return try createEvent(
@@ -258,7 +258,7 @@ public struct CoreNostr {
             relayURL: relayURL,
             base64OTSData: base64OTSData
         ) else {
-            throw NostrError.invalidEvent("Invalid base64 OTS data")
+            throw NostrError.validationError(field: "base64OTSData", reason: "Invalid base64 encoding for OpenTimestamps data")
         }
         
         let event = attestation.createEvent(pubkey: keyPair.publicKey)
@@ -314,7 +314,7 @@ public struct CoreNostr {
         recipientKeyPair: KeyPair
     ) throws -> String {
         guard let directMessage = NostrDirectMessage.from(event: event) else {
-            throw NostrError.invalidEvent("Event is not a valid encrypted direct message")
+            throw NostrError.invalidEvent(reason: .invalidKind)
         }
         
         return try directMessage.decrypt(

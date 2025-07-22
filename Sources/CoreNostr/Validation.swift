@@ -28,7 +28,7 @@ public enum Validation {
     /// - Throws: NostrError if the public key is invalid
     public static func validatePublicKey(_ publicKey: String) throws {
         guard isValidPublicKey(publicKey) else {
-            throw NostrError.invalidEvent("Invalid public key format: must be 64 hex characters")
+            throw NostrError.invalidPublicKey(reason: "Must be 64 hexadecimal characters, got \(publicKey.count)")
         }
     }
     
@@ -50,7 +50,7 @@ public enum Validation {
     /// - Throws: NostrError if the private key is invalid
     public static func validatePrivateKey(_ privateKey: String) throws {
         guard isValidPrivateKey(privateKey) else {
-            throw NostrError.cryptographyError("Invalid private key format: must be 64 hex characters")
+            throw NostrError.invalidPrivateKey(reason: "Must be 64 hexadecimal characters, got \(privateKey.count)")
         }
     }
     
@@ -72,7 +72,7 @@ public enum Validation {
     /// - Throws: NostrError if the event ID is invalid
     public static func validateEventId(_ eventId: String) throws {
         guard isValidEventId(eventId) else {
-            throw NostrError.invalidEvent("Invalid event ID format: must be 64 hex characters")
+            throw NostrError.validationError(field: "eventId", reason: "Must be 64 hexadecimal characters, got \(eventId.count)")
         }
     }
     
@@ -94,7 +94,7 @@ public enum Validation {
     /// - Throws: NostrError if the signature is invalid
     public static func validateSignature(_ signature: String) throws {
         guard isValidSignature(signature) else {
-            throw NostrError.cryptographyError("Invalid signature format: must be 128 hex characters")
+            throw NostrError.validationError(field: "signature", reason: "Must be 128 hexadecimal characters, got \(signature.count)")
         }
     }
     
@@ -152,7 +152,7 @@ public enum Validation {
     /// - Throws: NostrError if the URL is invalid
     public static func validateRelayURL(_ urlString: String) throws {
         guard isValidRelayURL(urlString) else {
-            throw NostrError.networkError("Invalid relay URL: must use ws:// or wss:// scheme")
+            throw NostrError.invalidURI(uri: urlString, reason: "Relay URL must use ws:// or wss:// scheme")
         }
     }
     
@@ -189,7 +189,7 @@ public enum Validation {
     }
     
     /// Event kind range types
-    public enum EventKindRange {
+    public enum EventKindRange: Sendable {
         case regular
         case replaceable
         case ephemeral
@@ -217,7 +217,7 @@ public enum Validation {
     /// - Throws: NostrError if content is too large
     public static func validateContent(_ content: String, maxSize: Int = 256 * 1024) throws {
         guard isValidContent(content, maxSize: maxSize) else {
-            throw NostrError.invalidEvent("Content too large: exceeds \(maxSize) bytes")
+            throw NostrError.invalidEvent(reason: .eventTooLarge)
         }
     }
     
@@ -253,7 +253,7 @@ public enum Validation {
         
         // Validate event kind
         guard isValidEventKind(event.kind) else {
-            throw NostrError.invalidEvent("Invalid event kind: \(event.kind)")
+            throw NostrError.unsupportedEventKind(kind: event.kind)
         }
         
         // Validate content size
@@ -263,7 +263,7 @@ public enum Validation {
         let now = Date().timeIntervalSince1970
         let oneYearFromNow = now + (365 * 24 * 60 * 60)
         guard TimeInterval(event.createdAt) <= oneYearFromNow else {
-            throw NostrError.invalidEvent("Event created_at is too far in the future")
+            throw NostrError.invalidTimestamp(reason: "Event created_at is too far in the future (more than 1 year)")
         }
     }
 }
