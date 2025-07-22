@@ -63,6 +63,8 @@ public extension NostrEvent {
                 var tag = ["e", eventId]
                 if let relay = relay {
                     tag.append(relay)
+                } else {
+                    tag.append("") // Empty relay placeholder
                 }
                 tag.append("mention")
                 return tag
@@ -250,8 +252,9 @@ public extension NostrEvent {
                 eventId: event.id
             ).tag)
             
-            // Also add p tag for mentioned authors
-            if !tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == event.pubkey }) {
+            // Also add p tag for mentioned authors (excluding self)
+            if event.pubkey != keyPair.publicKey && 
+               !tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == event.pubkey }) {
                 tags.append(["p", event.pubkey])
             }
         }

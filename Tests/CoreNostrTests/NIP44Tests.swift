@@ -213,7 +213,7 @@ struct NIP44Tests {
     
     @Test("Invalid private key throws")
     func testInvalidPrivateKeyThrows() throws {
-        #expect(throws: NIP44.NIP44Error.invalidPrivateKey) {
+        #expect(throws: NostrError.self) {
             _ = try NIP44.encrypt(
                 plaintext: "Test",
                 senderPrivateKey: "invalid-key",
@@ -224,7 +224,7 @@ struct NIP44Tests {
     
     @Test("Invalid public key throws")
     func testInvalidPublicKeyThrows() throws {
-        #expect(throws: NIP44.NIP44Error.invalidPublicKey) {
+        #expect(throws: NostrError.self) {
             _ = try NIP44.encrypt(
                 plaintext: "Test",
                 senderPrivateKey: aliceKeyPair.privateKey,

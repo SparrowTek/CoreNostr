@@ -240,14 +240,14 @@ import Foundation
     let textNote = try CoreNostr.createTextNote(
         keyPair: keyPair,
         content: "Hello, world!",
-        replyTo: "event123",
-        mentionedUsers: ["user456"]
+        replyTo: String(repeating: "a", count: 64),
+        mentionedUsers: [String(repeating: "b", count: 64)]
     )
     
     #expect(textNote.content == "Hello, world!")
     #expect(textNote.isTextNote)
-    #expect(textNote.referencedEvents == ["event123"])
-    #expect(textNote.mentionedUsers == ["user456"])
+    #expect(textNote.referencedEvents == [String(repeating: "a", count: 64)])
+    #expect(textNote.mentionedUsers == [String(repeating: "b", count: 64)])
     
     let isValid = try CoreNostr.verifyEvent(textNote)
     #expect(isValid)
