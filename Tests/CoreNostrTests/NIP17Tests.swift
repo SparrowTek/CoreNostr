@@ -114,11 +114,14 @@ struct NIP17Tests {
             }
         }
         
-        #expect(bobsWrap != nil)
+        guard let bobsWrap = bobsWrap else {
+            Issue.record("Bob's gift wrap not found")
+            return
+        }
         
         // Bob receives and decrypts
         let (message, senderPubkey) = try NIP17.receiveDirectMessage(
-            bobsWrap!,
+            bobsWrap,
             recipientKeyPair: bobKeyPair
         )
         
@@ -198,7 +201,11 @@ struct NIP17Tests {
             recipientPublicKeys: [bobKeyPair.publicKey, charlieKeyPair.publicKey]
         )
         
-        let (rumor, _) = try NIP59.unwrapAndOpen(giftWraps.last!, recipientKeyPair: aliceKeyPair)
+        guard let lastWrap = giftWraps.last else {
+            Issue.record("No gift wraps created")
+            return
+        }
+        let (rumor, _) = try NIP59.unwrapAndOpen(lastWrap, recipientKeyPair: aliceKeyPair)
         let participants = NIP17.extractParticipants(from: rumor)
         
         #expect(participants.count == 3)

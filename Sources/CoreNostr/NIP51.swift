@@ -399,7 +399,9 @@ public extension CoreNostr {
         
         var encryptedContent: String?
         if !privateItems.isEmpty {
-            encryptedContent = try encryptListItems(
+            // Using deprecated NIP-04 encryption for backward compatibility
+            // TODO: Migrate to NIP-44 when widely supported  
+            encryptedContent = try Self.encryptListItems(
                 privateItems,
                 recipientPublicKey: keyPair.publicKey,
                 senderKeyPair: keyPair
@@ -438,7 +440,9 @@ public extension CoreNostr {
         
         var encryptedContent: String?
         if !privateItems.isEmpty {
-            encryptedContent = try encryptListItems(
+            // Using deprecated NIP-04 encryption for backward compatibility
+            // TODO: Migrate to NIP-44 when widely supported  
+            encryptedContent = try Self.encryptListItems(
                 privateItems,
                 recipientPublicKey: keyPair.publicKey,
                 senderKeyPair: keyPair

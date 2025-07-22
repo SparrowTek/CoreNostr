@@ -5,8 +5,13 @@ import Foundation
 @Suite("NIP-09: Event Deletion Tests")
 struct NIP09Tests {
     
-    let keyPair = try! KeyPair.generate()
-    let otherKeyPair = try! KeyPair.generate()
+    let keyPair: KeyPair
+    let otherKeyPair: KeyPair
+    
+    init() throws {
+        self.keyPair = try KeyPair.generate()
+        self.otherKeyPair = try KeyPair.generate()
+    }
     
     @Test("Create deletion event for single event")
     func testCreateSingleDeletionEvent() throws {

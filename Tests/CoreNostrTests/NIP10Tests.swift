@@ -5,8 +5,13 @@ import Foundation
 @Suite("NIP-10: Reply Threading Tests")
 struct NIP10Tests {
     
-    let keyPair = try! KeyPair.generate()
-    let otherKeyPair = try! KeyPair.generate()
+    let keyPair: KeyPair
+    let otherKeyPair: KeyPair
+    
+    init() throws {
+        self.keyPair = try KeyPair.generate()
+        self.otherKeyPair = try KeyPair.generate()
+    }
     
     @Test("Extract thread references - marked format")
     func testExtractThreadReferencesMarked() throws {

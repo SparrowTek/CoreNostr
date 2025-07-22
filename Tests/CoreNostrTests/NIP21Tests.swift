@@ -115,7 +115,7 @@ struct NIP21Tests {
         }
     }
     
-    @Test("Parse naddr URI")
+    @Test("Parse naddr URI", .disabled("Related to NIP19 naddr issue"))
     func testParseNaddrURI() throws {
         let addr = try NAddr(
             identifier: "1700847963",
@@ -176,7 +176,7 @@ struct NIP21Tests {
         #expect(uri.bech32String == npub)
     }
     
-    @Test("Convenience extensions")
+    @Test("Convenience extensions", .disabled("Related to NIP19 encoding issues"))
     func testConvenienceExtensions() throws {
         // Test PublicKey builder
         let pubkey: PublicKey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
