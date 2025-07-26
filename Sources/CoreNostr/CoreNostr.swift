@@ -1,4 +1,6 @@
 import Foundation
+@_exported import Crypto
+@_exported import CryptoKit
 
 /// The main entry point for CoreNostr functionality.
 ///
@@ -320,6 +322,73 @@ public struct CoreNostr {
         return try directMessage.decrypt(
             with: recipientKeyPair,
             senderPublicKey: event.pubkey
+        )
+    }
+    
+    /// Creates an encrypted direct message event using NIP-44 encryption.
+    ///
+    /// NIP-44 provides better security than NIP-04 with proper padding and
+    /// modern encryption (ChaCha20-Poly1305).
+    ///
+    /// - Parameters:
+    ///   - senderKeyPair: The sender's key pair for encryption and signing
+    ///   - recipientPublicKey: The recipient's public key
+    ///   - message: The plaintext message to encrypt
+    ///   - replyToEventId: Optional event ID this message is replying to
+    /// - Returns: A signed encrypted direct message event
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption or signing fails
+    public static func createDirectMessageEventNIP44(
+        senderKeyPair: KeyPair,
+        recipientPublicKey: PublicKey,
+        message: String,
+        replyToEventId: EventID? = nil
+    ) throws -> NostrEvent {
+        // Encrypt the message using NIP-44
+        let encryptedContent = try senderKeyPair.encryptNIP44(
+            message: message,
+            to: recipientPublicKey
+        )
+        
+        // Build tags
+        var tags: [[String]] = [["p", recipientPublicKey]]
+        
+        // Add reply tag if provided
+        if let replyToEventId = replyToEventId {
+            try Validation.validateEventId(replyToEventId)
+            tags.append(["e", replyToEventId])
+        }
+        
+        // Add NIP-44 version tag
+        tags.append(["nip44-version", "2"])
+        
+        // Create and sign the event
+        return try createEvent(
+            keyPair: senderKeyPair,
+            kind: .encryptedDirectMessage,
+            content: encryptedContent,
+            tags: tags
+        )
+    }
+    
+    /// Decrypts an encrypted direct message event using NIP-44.
+    ///
+    /// - Parameters:
+    ///   - event: The encrypted direct message event to decrypt
+    ///   - recipientKeyPair: The recipient's key pair for decryption
+    /// - Returns: The decrypted plaintext message
+    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event is not a valid direct message
+    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    public static func decryptDirectMessageNIP44(
+        event: NostrEvent,
+        recipientKeyPair: KeyPair
+    ) throws -> String {
+        guard event.kind == EventKind.encryptedDirectMessage.rawValue else {
+            throw NostrError.invalidEvent(reason: .invalidKind)
+        }
+        
+        return try recipientKeyPair.decryptNIP44(
+            payload: event.content,
+            from: event.pubkey
         )
     }
 }

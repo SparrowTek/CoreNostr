@@ -6,10 +6,10 @@ let package = Package(
     name: "CoreNostr",
     platforms: [
         .macOS(.v15),
-        .iOS(.v13),
-        .tvOS(.v13),
-        .watchOS(.v6),
-        .macCatalyst(.v13)
+        .iOS(.v17),
+        .tvOS(.v17),
+        .watchOS(.v10),
+        .macCatalyst(.v17)
     ],
     products: [
         .library(

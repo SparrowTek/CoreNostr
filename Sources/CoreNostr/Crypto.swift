@@ -207,6 +207,36 @@ public struct KeyPair: Sendable, Codable {
         let sharedSecret = try getSharedSecret(with: senderPublicKey)
         return try NostrCrypto.decryptMessage(encryptedContent, with: sharedSecret)
     }
+    
+    /// Encrypts a message using NIP-44 encryption.
+    ///
+    /// - Parameters:
+    ///   - message: The plaintext message to encrypt
+    ///   - recipientPublicKey: The recipient's public key
+    /// - Returns: Base64-encoded encrypted payload
+    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    public func encryptNIP44(message: String, to recipientPublicKey: PublicKey) throws -> String {
+        return try NIP44.encrypt(
+            plaintext: message,
+            senderPrivateKey: privateKey,
+            recipientPublicKey: recipientPublicKey
+        )
+    }
+    
+    /// Decrypts a message using NIP-44 decryption.
+    ///
+    /// - Parameters:
+    ///   - payload: Base64-encoded encrypted payload
+    ///   - senderPublicKey: The sender's public key
+    /// - Returns: Decrypted plaintext message
+    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    public func decryptNIP44(payload: String, from senderPublicKey: PublicKey) throws -> String {
+        return try NIP44.decrypt(
+            payload: payload,
+            recipientPrivateKey: privateKey,
+            senderPublicKey: senderPublicKey
+        )
+    }
 }
 
 // MARK: - Data Extensions
