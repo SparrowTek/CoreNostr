@@ -215,6 +215,9 @@ public class RelayConnection {
     /// The URL of the connected relay
     public private(set) var url: URL?
     
+    // Move networking off the main actor via RelayIO
+    private var io: RelayIO?
+
     private var webSocketTask: URLSessionWebSocketTask?
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
     private var messageStream: AsyncStream<RelayMessage>?
@@ -251,33 +254,25 @@ public class RelayConnection {
         
         self.url = url
         state = .connecting
-        let session = URLSession.shared
-        webSocketTask = session.webSocketTask(with: url)
-        
-        // Create the message stream
-        let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
-        messageStream = stream
-        messageContinuation = continuation
-        
-        webSocketTask?.resume()
-        // Mark connected before starting listener so the loop can run
-        state = .connected
-        reconnectAttempts = 0
-        
-        // Start listening for messages in the background
-        listenTask?.cancel()
-        listenTask = Task { [weak self] in
-            await self?.startListening()
+        let io = RelayIO(url: url, pingInterval: pingInterval, autoReconnect: autoReconnect)
+        self.io = io
+        do {
+            try await io.connect()
+            // Cache messages stream for main-actor access
+            self.messageStream = await io.getMessages()
+            state = .connected
+        } catch {
+            state = .error("Connection error: \(error.localizedDescription)")
+            throw error
         }
-        
-        // Start pings
-        startPinging()
     }
     
     /// Disconnects from the relay and cleans up resources.
     public func disconnect() async {
-        cleanupConnection(keepURL: false)
+        await io?.disconnect()
+        io = nil
         state = .disconnected
+        url = nil
     }
     
     /// Sends a message to the connected relay.
@@ -285,14 +280,12 @@ public class RelayConnection {
     /// - Parameter message: The message to send
     /// - Throws: ``NostrError/networkError(_:)`` if sending fails or not connected
     public func send(_ message: ClientMessage) async throws {
-        guard state == .connected, let webSocketTask = webSocketTask else {
+        guard state == .connected, let io = io else {
             throw NostrError.networkError(operation: .send, reason: "Not connected to relay")
         }
-        
         do {
             let messageString = try message.encode()
-            let webSocketMessage = URLSessionWebSocketTask.Message.string(messageString)
-            try await webSocketTask.send(webSocketMessage)
+            try await io.sendString(messageString)
         } catch {
             throw NostrError.networkError(operation: .send, reason: "WebSocket send failed: \(error.localizedDescription)")
         }
@@ -525,6 +518,143 @@ public class RelayPool {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// MARK: - RelayIO (off-main-actor WebSocket handler)
+
+actor RelayIO {
+    let url: URL
+    private var webSocketTask: URLSessionWebSocketTask?
+    private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
+    private(set) var messages: AsyncStream<RelayMessage>?
+    private var pingTask: Task<Void, Never>?
+    private var listenTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempts: Int = 0
+    private let autoReconnect: Bool
+    private let pingInterval: TimeInterval
+    
+    init(url: URL, pingInterval: TimeInterval, autoReconnect: Bool) {
+        self.url = url
+        self.pingInterval = pingInterval
+        self.autoReconnect = autoReconnect
+    }
+    
+    func connect() async throws {
+        guard webSocketTask == nil else { return }
+        let session = URLSession.shared
+        webSocketTask = session.webSocketTask(with: url)
+        let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
+        messages = stream
+        messageContinuation = continuation
+        webSocketTask?.resume()
+        
+        listenTask?.cancel()
+        listenTask = Task { [weak self] in
+            await self?.startListening()
+        }
+        startPinging()
+    }
+    
+    func getMessages() -> AsyncStream<RelayMessage>? { messages }
+    
+    func disconnect() async {
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+        messageContinuation?.finish()
+        messageContinuation = nil
+        messages = nil
+        listenTask?.cancel()
+        listenTask = nil
+        pingTask?.cancel()
+        pingTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempts = 0
+    }
+    
+    func sendString(_ string: String) async throws {
+        guard let task = webSocketTask else {
+            throw NostrError.networkError(operation: .send, reason: "Not connected")
+        }
+        try await task.send(.string(string))
+    }
+    
+    private func startListening() async {
+        guard let task = webSocketTask else { return }
+        while !Task.isCancelled {
+            do {
+                let message = try await task.receive()
+                switch message {
+                case .string(let text):
+                    if let relayMessage = try? RelayMessage.decode(from: text) {
+                        messageContinuation?.yield(relayMessage)
+                    }
+                case .data(let data):
+                    if let text = String(data: data, encoding: .utf8),
+                       let relayMessage = try? RelayMessage.decode(from: text) {
+                        messageContinuation?.yield(relayMessage)
+                    }
+                @unknown default:
+                    break
+                }
+            } catch {
+                await handleConnectionErrorAndMaybeReconnect()
+                break
+            }
+        }
+    }
+    
+    private func startPinging() {
+        pingTask?.cancel()
+        guard let task = webSocketTask else { return }
+        let interval = pingInterval
+        pingTask = Task { [weak self] in
+            while let self = self, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                task.sendPing { error in
+                    if error != nil {
+                        Task { await self.handleConnectionErrorAndMaybeReconnect() }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleConnectionErrorAndMaybeReconnect() async {
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        listenTask?.cancel()
+        listenTask = nil
+        pingTask?.cancel()
+        pingTask = nil
+        if autoReconnect {
+            scheduleReconnect()
+        } else {
+            messageContinuation?.finish()
+            messageContinuation = nil
+            messages = nil
+        }
+    }
+    
+    private func scheduleReconnect() {
+        reconnectTask?.cancel()
+        reconnectAttempts += 1
+        let baseDelay: Double = 1.0
+        let exp = pow(2.0, Double(max(0, reconnectAttempts - 1))) * baseDelay
+        let delay = min(60.0, exp)
+        let jitter = Double.random(in: 0...(delay * 0.2))
+        let totalDelay = delay + jitter
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(totalDelay * 1_000_000_000))
+            guard let self = self else { return }
+            do {
+                try await self.connect()
+            } catch {
+                await self.scheduleReconnect()
             }
         }
     }

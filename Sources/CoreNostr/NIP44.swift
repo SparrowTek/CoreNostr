@@ -182,7 +182,8 @@ public enum NIP44 {
         let payloadWithoutHMAC = Data(payloadData[..<hmacStart])  // Convert SubSequence to Data
         let computedHMAC = computeHMAC(payload: payloadWithoutHMAC, key: hmacKey)
         
-        guard computedHMAC == receivedHMAC else {
+        // Use constant-time comparison to prevent timing side-channels
+        guard Data(computedHMAC).constantTimeEquals(Data(receivedHMAC)) else {
             throw NIP44Error.hmacVerificationFailed
         }
         

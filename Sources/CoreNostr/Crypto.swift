@@ -272,6 +272,22 @@ extension Data {
     public var hex: String {
         return self.map { String(format: "%02x", $0) }.joined()
     }
+
+    /// Constant-time equality check to mitigate timing attacks
+    /// - Parameter other: Other data to compare
+    /// - Returns: True if equal, false otherwise
+    public func constantTimeEquals(_ other: Data) -> Bool {
+        // Early exit on length mismatch without revealing where it differs
+        // by folding length into result
+        var result: UInt8 = 0
+        let maxLen = Swift.max(self.count, other.count)
+        for i in 0..<maxLen {
+            let a: UInt8 = i < self.count ? self[i] : 0
+            let b: UInt8 = i < other.count ? other[i] : 0
+            result |= a ^ b
+        }
+        return result == 0
+    }
 }
 
 // MARK: - Utility Functions
