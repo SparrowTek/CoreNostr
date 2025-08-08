@@ -219,6 +219,18 @@ public class RelayConnection {
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
     private var messageStream: AsyncStream<RelayMessage>?
     
+    // Keepalive and reconnection
+    private var pingTask: Task<Void, Never>?
+    private var listenTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempts: Int = 0
+    
+    /// Whether to automatically reconnect on errors
+    public var autoReconnect: Bool = true
+    
+    /// Interval between pings in seconds
+    public var pingInterval: TimeInterval = 30
+    
     /// Creates a new relay connection.
     public init() {}
     
@@ -248,22 +260,24 @@ public class RelayConnection {
         messageContinuation = continuation
         
         webSocketTask?.resume()
-        
-        // Start listening for messages
-        await startListening()
-        
+        // Mark connected before starting listener so the loop can run
         state = .connected
+        reconnectAttempts = 0
+        
+        // Start listening for messages in the background
+        listenTask?.cancel()
+        listenTask = Task { [weak self] in
+            await self?.startListening()
+        }
+        
+        // Start pings
+        startPinging()
     }
     
     /// Disconnects from the relay and cleans up resources.
     public func disconnect() async {
-        webSocketTask?.cancel(with: .normalClosure, reason: nil)
-        webSocketTask = nil
-        messageContinuation?.finish()
-        messageContinuation = nil
-        messageStream = nil
+        cleanupConnection(keepURL: false)
         state = .disconnected
-        url = nil
     }
     
     /// Sends a message to the connected relay.
@@ -294,7 +308,7 @@ public class RelayConnection {
     /// Starts listening for messages from the WebSocket.
     private func startListening() async {
         guard let webSocketTask = webSocketTask else { return }
-        while state == .connected {
+        while !Task.isCancelled {
             do {
                 let message = try await webSocketTask.receive()
                 await handleWebSocketMessage(message)
@@ -302,7 +316,76 @@ public class RelayConnection {
                 await MainActor.run {
                     self.state = .error("Connection error: \(error.localizedDescription)")
                 }
+                await handleConnectionErrorAndMaybeReconnect()
                 break
+            }
+        }
+    }
+
+    private func startPinging() {
+        pingTask?.cancel()
+        guard let webSocketTask = webSocketTask else { return }
+        let interval = pingInterval
+        pingTask = Task { [weak self] in
+            while let self = self, !Task.isCancelled, self.state == .connected {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                webSocketTask.sendPing { error in
+                    if let error = error {
+                        Task { @MainActor in
+                            self.state = .error("Ping failed: \(error.localizedDescription)")
+                            await self.handleConnectionErrorAndMaybeReconnect()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func cleanupConnection(keepURL: Bool) {
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+        messageContinuation?.finish()
+        messageContinuation = nil
+        messageStream = nil
+        listenTask?.cancel()
+        listenTask = nil
+        pingTask?.cancel()
+        pingTask = nil
+        if !keepURL {
+            url = nil
+        }
+    }
+
+    private func handleConnectionErrorAndMaybeReconnect() async {
+        // Clean up but keep URL for reconnect
+        cleanupConnection(keepURL: true)
+        if autoReconnect, let url = self.url {
+            scheduleReconnect(to: url)
+        }
+    }
+
+    private func scheduleReconnect(to url: URL) {
+        reconnectTask?.cancel()
+        reconnectAttempts += 1
+        let baseDelay: Double = 1.0
+        let exp = pow(2.0, Double(max(0, reconnectAttempts - 1))) * baseDelay
+        let delay = min(60.0, exp)
+        let jitter = Double.random(in: 0...(delay * 0.2))
+        let totalDelay = delay + jitter
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(totalDelay * 1_000_000_000))
+            guard let self = self else { return }
+            await MainActor.run {
+                self.state = .connecting
+            }
+            do {
+                try await self.connect(to: url)
+            } catch {
+                await MainActor.run {
+                    self.state = .error("Reconnect failed: \(error.localizedDescription)")
+                }
+                // Schedule again
+                self.scheduleReconnect(to: url)
             }
         }
     }

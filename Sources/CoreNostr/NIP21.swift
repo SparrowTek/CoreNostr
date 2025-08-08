@@ -49,17 +49,20 @@ public enum NostrURI: Sendable, Equatable {
     public init?(from string: String) {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Remove nostr: prefix if present
-        let content: String
-        if trimmed.hasPrefix("nostr:") {
-            content = String(trimmed.dropFirst(6))
+        // Remove known prefixes if present and normalize leading slashes
+        let rawContent: String
+        if trimmed.hasPrefix("nostr://") {
+            rawContent = String(trimmed.dropFirst("nostr://".count))
+        } else if trimmed.hasPrefix("nostr:/") {
+            rawContent = String(trimmed.dropFirst("nostr:/".count))
+        } else if trimmed.hasPrefix("nostr:") {
+            rawContent = String(trimmed.dropFirst("nostr:".count))
         } else if trimmed.hasPrefix("web+nostr:") {
-            content = String(trimmed.dropFirst(10))
-        } else if trimmed.hasPrefix("nostr://") {
-            content = String(trimmed.dropFirst(8))
+            rawContent = String(trimmed.dropFirst("web+nostr:".count))
         } else {
-            content = trimmed
+            rawContent = trimmed
         }
+        let content = rawContent.trimmingLeadingSlashes()
         
         // Try to decode as bech32 entity
         if let entity = try? Bech32Entity(from: content) {
@@ -167,6 +170,18 @@ public enum NostrURI: Sendable, Equatable {
              .addr(let bech32):
             return "web+nostr:\(bech32)"
         }
+    }
+}
+
+// MARK: - Helpers
+
+private extension String {
+    func trimmingLeadingSlashes() -> String {
+        var result = self
+        while result.first == "/" {
+            result.removeFirst()
+        }
+        return result
     }
 }
 
