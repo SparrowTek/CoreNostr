@@ -216,7 +216,7 @@ public class RelayConnection {
     public private(set) var url: URL?
     
     // Move networking off the main actor via RelayIO
-    private var io: RelayIO?
+    private var io: RelayIOProtocol?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
@@ -236,6 +236,12 @@ public class RelayConnection {
     
     /// Creates a new relay connection.
     public init() {}
+
+    /// Internal initializer for injecting a custom IO layer (used in tests)
+    /// - Parameter io: An instance conforming to `RelayIOProtocol`
+    init(io: RelayIOProtocol) {
+        self.io = io
+    }
     
     deinit {
         Task { [weak self] in
@@ -254,7 +260,7 @@ public class RelayConnection {
         
         self.url = url
         state = .connecting
-        let io = RelayIO(url: url, pingInterval: pingInterval, autoReconnect: autoReconnect)
+        let io: RelayIOProtocol = self.io ?? RelayIO(url: url, pingInterval: pingInterval, autoReconnect: autoReconnect)
         self.io = io
         do {
             try await io.connect()
@@ -525,7 +531,15 @@ public class RelayPool {
 
 // MARK: - RelayIO (off-main-actor WebSocket handler)
 
-actor RelayIO {
+// Internal protocol to allow dependency injection of IO in tests
+protocol RelayIOProtocol: AnyObject, Sendable {
+    func connect() async throws
+    func getMessages() async -> AsyncStream<RelayMessage>?
+    func disconnect() async
+    func sendString(_ string: String) async throws
+}
+
+actor RelayIO: RelayIOProtocol {
     let url: URL
     private var webSocketTask: URLSessionWebSocketTask?
     private var messageContinuation: AsyncStream<RelayMessage>.Continuation?
@@ -559,7 +573,7 @@ actor RelayIO {
         startPinging()
     }
     
-    func getMessages() -> AsyncStream<RelayMessage>? { messages }
+    func getMessages() async -> AsyncStream<RelayMessage>? { messages }
     
     func disconnect() async {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
