@@ -266,6 +266,17 @@ public class RelayConnection {
             try await io.connect()
             // Cache messages stream for main-actor access
             self.messageStream = await io.getMessages()
+            if let stateStream = await io.getStateStream() {
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    for await s in stateStream {
+                        self.state = s
+                        if s == .connected {
+                            self.messageStream = await io.getMessages()
+                        }
+                    }
+                }
+            }
             state = .connected
         } catch {
             state = .error("Connection error: \(error.localizedDescription)")
@@ -535,6 +546,7 @@ public class RelayPool {
 protocol RelayIOProtocol: AnyObject, Sendable {
     func connect() async throws
     func getMessages() async -> AsyncStream<RelayMessage>?
+    func getStateStream() async -> AsyncStream<ConnectionState>?
     func disconnect() async
     func sendString(_ string: String) async throws
 }
@@ -550,6 +562,11 @@ actor RelayIO: RelayIOProtocol {
     private var reconnectAttempts: Int = 0
     private let autoReconnect: Bool
     private let pingInterval: TimeInterval
+    private let readTimeout: TimeInterval = 30
+    private var lastReceiveAt: Date = .distantPast
+    private var timeoutTask: Task<Void, Never>?
+    private var stateContinuation: AsyncStream<ConnectionState>.Continuation?
+    private(set) var stateStream: AsyncStream<ConnectionState>?
     
     init(url: URL, pingInterval: TimeInterval, autoReconnect: Bool) {
         self.url = url
@@ -561,9 +578,16 @@ actor RelayIO: RelayIOProtocol {
         guard webSocketTask == nil else { return }
         let session = URLSession.shared
         webSocketTask = session.webSocketTask(with: url)
-        let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
-        messages = stream
-        messageContinuation = continuation
+        if messages == nil {
+            let (stream, continuation) = AsyncStream<RelayMessage>.makeStream()
+            messages = stream
+            messageContinuation = continuation
+        }
+        if stateStream == nil {
+            let (s, c) = AsyncStream<ConnectionState>.makeStream()
+            stateStream = s
+            stateContinuation = c
+        }
         webSocketTask?.resume()
         
         listenTask?.cancel()
@@ -571,9 +595,12 @@ actor RelayIO: RelayIOProtocol {
             await self?.startListening()
         }
         startPinging()
+        startTimeoutWatcher()
+        stateContinuation?.yield(.connected)
     }
     
     func getMessages() async -> AsyncStream<RelayMessage>? { messages }
+    func getStateStream() async -> AsyncStream<ConnectionState>? { stateStream }
     
     func disconnect() async {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -585,9 +612,14 @@ actor RelayIO: RelayIOProtocol {
         listenTask = nil
         pingTask?.cancel()
         pingTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectAttempts = 0
+        stateContinuation?.finish()
+        stateContinuation = nil
+        stateStream = nil
     }
     
     func sendString(_ string: String) async throws {
@@ -605,17 +637,20 @@ actor RelayIO: RelayIOProtocol {
                 switch message {
                 case .string(let text):
                     if let relayMessage = try? RelayMessage.decode(from: text) {
+                        lastReceiveAt = Date()
                         messageContinuation?.yield(relayMessage)
                     }
                 case .data(let data):
                     if let text = String(data: data, encoding: .utf8),
                        let relayMessage = try? RelayMessage.decode(from: text) {
+                        lastReceiveAt = Date()
                         messageContinuation?.yield(relayMessage)
                     }
                 @unknown default:
                     break
                 }
             } catch {
+                stateContinuation?.yield(.disconnected)
                 await handleConnectionErrorAndMaybeReconnect()
                 break
             }
@@ -631,10 +666,33 @@ actor RelayIO: RelayIOProtocol {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 task.sendPing { error in
                     if error != nil {
-                        Task { await self.handleConnectionErrorAndMaybeReconnect() }
+                        Task {
+                            await self.stateContinuation?.yield(.disconnected)
+                            await self.handleConnectionErrorAndMaybeReconnect()
+                        }
                     }
                 }
             }
+        }
+    }
+
+    private func startTimeoutWatcher() {
+        timeoutTask?.cancel()
+        lastReceiveAt = Date()
+        let timeout = readTimeout
+        timeoutTask = Task { [weak self] in
+            while let self = self, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                await self.checkTimeout()
+            }
+        }
+    }
+    
+    private func checkTimeout() async {
+        let elapsed = Date().timeIntervalSince(lastReceiveAt)
+        if elapsed >= readTimeout {
+            stateContinuation?.yield(.disconnected)
+            await handleConnectionErrorAndMaybeReconnect()
         }
     }
     
@@ -645,12 +703,17 @@ actor RelayIO: RelayIOProtocol {
         listenTask = nil
         pingTask?.cancel()
         pingTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
         if autoReconnect {
             scheduleReconnect()
         } else {
             messageContinuation?.finish()
             messageContinuation = nil
             messages = nil
+            stateContinuation?.finish()
+            stateContinuation = nil
+            stateStream = nil
         }
     }
     
@@ -665,6 +728,7 @@ actor RelayIO: RelayIOProtocol {
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(totalDelay * 1_000_000_000))
             guard let self = self else { return }
+            await self.stateContinuation?.yield(.connecting)
             do {
                 try await self.connect()
             } catch {
