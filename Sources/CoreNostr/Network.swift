@@ -1,9 +1,9 @@
 import Foundation
-// Lightweight logging usage
-private func logDebug(_ msg: @autoclosure () -> String) { NostrLogger.debug(msg()) }
-private func logInfo(_ msg: @autoclosure () -> String)  { NostrLogger.info(msg()) }
-private func logWarn(_ msg: @autoclosure () -> String)  { NostrLogger.warn(msg()) }
-private func logError(_ msg: @autoclosure () -> String) { NostrLogger.error(msg()) }
+// Lightweight logging usage (MainActor to satisfy actor isolation)
+@MainActor private func logDebug(_ msg: @autoclosure () -> String) { NostrLogger.debug(msg()) }
+@MainActor private func logInfo(_ msg: @autoclosure () -> String)  { NostrLogger.info(msg()) }
+@MainActor private func logWarn(_ msg: @autoclosure () -> String)  { NostrLogger.warn(msg()) }
+@MainActor private func logError(_ msg: @autoclosure () -> String) { NostrLogger.error(msg()) }
 import Combine
 
 // MARK: - Message Types
@@ -605,7 +605,7 @@ actor RelayIO: RelayIOProtocol {
                     break
                 }
             } catch {
-                logWarn("Receive loop error: \(error.localizedDescription)")
+                await MainActor.run { logWarn("Receive loop error: \(error.localizedDescription)") }
                 stateContinuation?.yield(.disconnected)
                 await handleConnectionErrorAndMaybeReconnect()
                 break
@@ -622,7 +622,7 @@ actor RelayIO: RelayIOProtocol {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 task.sendPing { error in
                     if error != nil {
-                        logWarn("Ping failed: \(error!.localizedDescription)")
+                        Task { @MainActor in logWarn("Ping failed: \(error!.localizedDescription)") }
                         Task {
                             await self.stateContinuation?.yield(.disconnected)
                             await self.handleConnectionErrorAndMaybeReconnect()
@@ -689,7 +689,7 @@ actor RelayIO: RelayIOProtocol {
             do {
                 try await self.connect()
             } catch {
-                logWarn("Reconnect attempt failed: \(error.localizedDescription)")
+                await MainActor.run { logWarn("Reconnect attempt failed: \(error.localizedDescription)") }
                 await self.scheduleReconnect()
             }
         }

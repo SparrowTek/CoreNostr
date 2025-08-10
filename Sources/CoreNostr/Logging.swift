@@ -11,7 +11,8 @@ public enum NostrLogLevel: Int, Sendable {
     case none = 4
 }
 
-public struct NostrLogger: Sendable {
+@MainActor
+public enum NostrLogger {
     public static var level: NostrLogLevel = .warn
     public static var isEnabled: Bool = true
     public static var subsystem: String = "dev.sparrowtek.corenostr"
@@ -56,22 +57,30 @@ public struct NostrLogger: Sendable {
         let hexPatterns = ["[0-9a-fA-F]{64}", "[0-9a-fA-F]{128}"]
         for pattern in hexPatterns {
             if let regex = try? NSRegularExpression(pattern: pattern) {
-                let range = NSRange(location: 0, length: (result as NSString).length)
-                result = regex.stringByReplacingMatches(in: result, options: [], range: range) { match -> String in
-                    let matched = (result as NSString).substring(with: match.range)
-                    return mask(matched)
-                }
+                result = replaceMatches(in: result, regex: regex)
             }
         }
         // Redact bech32 secrets starting with nsec1
         if let regex = try? NSRegularExpression(pattern: "nsec1[02-9ac-hj-np-z]{10,}", options: [.caseInsensitive]) {
-            let range = NSRange(location: 0, length: (result as NSString).length)
-            result = regex.stringByReplacingMatches(in: result, options: [], range: range) { match -> String in
-                let matched = (result as NSString).substring(with: match.range)
-                return mask(matched)
-            }
+            result = replaceMatches(in: result, regex: regex)
         }
         return result
+    }
+
+    private static func replaceMatches(in text: String, regex: NSRegularExpression) -> String {
+        var mutable = text
+        let ns = mutable as NSString
+        let fullRange = NSRange(location: 0, length: ns.length)
+        let matches = regex.matches(in: mutable, options: [], range: fullRange)
+        // Replace from the end to keep indices valid
+        for match in matches.reversed() {
+            let matched = (mutable as NSString).substring(with: match.range)
+            let masked = mask(matched)
+            let m = NSMutableString(string: mutable)
+            m.replaceCharacters(in: match.range, with: masked)
+            mutable = m as String
+        }
+        return mutable
     }
 
     private static func mask(_ s: String) -> String {
