@@ -62,7 +62,7 @@ public struct NostrDirectMessage: Codable, Hashable, Sendable {
     ///   - message: The plaintext message to encrypt
     ///   - replyToEventId: Optional event ID this message is replying to
     /// - Returns: An encrypted direct message
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if encryption fails
     public static func create(
         senderKeyPair: KeyPair,
         recipientPublicKey: PublicKey,
@@ -134,9 +134,11 @@ public struct NostrDirectMessage: Codable, Hashable, Sendable {
     
     /// Decrypts the message content using the recipient's key pair.
     ///
-    /// - Parameter recipientKeyPair: The recipient's key pair for decryption
+    /// - Parameters:
+    ///   - recipientKeyPair: The recipient's key pair for decryption
+    ///   - senderPublicKey: The sender's public key
     /// - Returns: The decrypted plaintext message
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if decryption fails
     public func decrypt(with recipientKeyPair: KeyPair, senderPublicKey: PublicKey) throws -> String {
         let sharedSecret = try recipientKeyPair.getSharedSecret(with: senderPublicKey)
         return try NostrCrypto.decryptMessage(encryptedContent, with: sharedSecret)

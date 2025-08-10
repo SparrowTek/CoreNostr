@@ -38,7 +38,7 @@ public struct KeyPair: Sendable, Codable {
     /// Creates a KeyPair from an existing private key.
     /// 
     /// - Parameter privateKey: A 64-character hexadecimal private key
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if the private key is invalid
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if the private key is invalid
     public init(privateKey: PrivateKey) throws {
         try Validation.validatePrivateKey(privateKey)
         self.privateKey = privateKey
@@ -55,7 +55,7 @@ public struct KeyPair: Sendable, Codable {
     /// Generates a new random KeyPair.
     /// 
     /// - Returns: A new KeyPair with randomly generated private and public keys
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if key generation fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if key generation fails
     public static func generate() throws -> KeyPair {
         let privateKey = try P256K.Schnorr.PrivateKey()
         let privateKeyHex = privateKey.dataRepresentation.hex
@@ -66,7 +66,7 @@ public struct KeyPair: Sendable, Codable {
     /// 
     /// - Parameter data: The data to sign
     /// - Returns: A 128-character hexadecimal Schnorr signature
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public func sign(_ data: Data) throws -> Signature {
         guard let privateKeyData = Data(hex: privateKey) else {
             throw NostrError.invalidPrivateKey(reason: "Invalid hexadecimal format")
@@ -81,7 +81,7 @@ public struct KeyPair: Sendable, Codable {
     /// 
     /// - Parameter event: The event to sign
     /// - Returns: A complete event with calculated ID and signature
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public func signEvent(_ event: NostrEvent) throws -> NostrEvent {
         let serializedEvent = event.serializedForSigning()
         let eventData = Data(serializedEvent.utf8)
@@ -118,8 +118,8 @@ public struct KeyPair: Sendable, Codable {
     /// 
     /// - Parameter event: The event to verify
     /// - Returns: `true` if the event is valid, `false` otherwise
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event ID is invalid
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if verification fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the event ID is invalid
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if verification fails
     public static func verifyEvent(_ event: NostrEvent) throws -> Bool {
         let serializedEvent = event.serializedForSigning()
         let eventData = Data(serializedEvent.utf8)
@@ -141,7 +141,7 @@ public struct KeyPair: Sendable, Codable {
     ///
     /// - Parameter recipientPublicKey: The recipient's public key
     /// - Returns: 32-byte shared secret for AES encryption
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if ECDH fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if ECDH fails
     public func getSharedSecret(with recipientPublicKey: PublicKey) throws -> Data {
         guard let privateKeyData = Data(hex: privateKey),
               privateKeyData.count == 32,
@@ -190,7 +190,7 @@ public struct KeyPair: Sendable, Codable {
     ///   - message: The plaintext message to encrypt
     ///   - recipientPublicKey: The recipient's public key
     /// - Returns: Base64-encoded encrypted message with IV in format "encrypted?iv=base64_iv"
-    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if encryption fails
     public func encrypt(message: String, to recipientPublicKey: PublicKey) throws -> String {
         let sharedSecret = try getSharedSecret(with: recipientPublicKey)
         return try NostrCrypto.encryptMessage(message, with: sharedSecret)
@@ -202,7 +202,7 @@ public struct KeyPair: Sendable, Codable {
     ///   - encryptedContent: The encrypted content in format "encrypted?iv=base64_iv"
     ///   - senderPublicKey: The sender's public key
     /// - Returns: The decrypted plaintext message
-    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if decryption fails
     public func decrypt(message encryptedContent: String, from senderPublicKey: PublicKey) throws -> String {
         let sharedSecret = try getSharedSecret(with: senderPublicKey)
         return try NostrCrypto.decryptMessage(encryptedContent, with: sharedSecret)
@@ -214,7 +214,7 @@ public struct KeyPair: Sendable, Codable {
     ///   - message: The plaintext message to encrypt
     ///   - recipientPublicKey: The recipient's public key
     /// - Returns: Base64-encoded encrypted payload
-    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if encryption fails
     public func encryptNIP44(message: String, to recipientPublicKey: PublicKey) throws -> String {
         return try NIP44.encrypt(
             plaintext: message,
@@ -229,7 +229,7 @@ public struct KeyPair: Sendable, Codable {
     ///   - payload: Base64-encoded encrypted payload
     ///   - senderPublicKey: The sender's public key
     /// - Returns: Decrypted plaintext message
-    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if decryption fails
     public func decryptNIP44(payload: String, from senderPublicKey: PublicKey) throws -> String {
         return try NIP44.decrypt(
             payload: payload,
@@ -342,7 +342,7 @@ public struct NostrCrypto: Sendable {
     ///   - message: The plaintext message to encrypt
     ///   - sharedSecret: The 32-byte shared secret from ECDH
     /// - Returns: Base64-encoded encrypted message with IV in format "encrypted?iv=base64_iv"
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if encryption fails
     public static func encryptMessage(_ message: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
             throw NostrError.encryptionError(operation: .encrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
@@ -375,7 +375,7 @@ public struct NostrCrypto: Sendable {
     ///   - encryptedContent: The encrypted content in format "encrypted?iv=base64_iv"
     ///   - sharedSecret: The 32-byte shared secret from ECDH
     /// - Returns: The decrypted plaintext message
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if decryption fails
     public static func decryptMessage(_ encryptedContent: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
@@ -873,7 +873,7 @@ public struct NIP06: Sendable {
     /// 
     /// - Parameter count: The number of random bytes to generate
     /// - Returns: Random bytes as Data
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if random generation fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if random generation fails
     public static func randomBytes(count: Int) throws -> Data {
         var bytes = Data(count: count)
         let result = bytes.withUnsafeMutableBytes { buffer in
@@ -902,7 +902,7 @@ public struct NIP06: Sendable {
     ///   - key: The secret key
     ///   - message: The message to authenticate
     /// - Returns: 32-byte HMAC result
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if HMAC computation fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if HMAC computation fails
     public static func hmacSHA256(key: Data, message: Data) throws -> Data {
         let mac = HMAC<CryptoKit.SHA256>.authenticationCode(for: message, using: SymmetricKey(data: key))
         return Data(mac)
@@ -915,7 +915,7 @@ public struct NIP06: Sendable {
     ///   - key: 32-byte encryption key
     ///   - iv: 16-byte initialization vector
     /// - Returns: Encrypted data
-    /// - Throws: ``NostrError/encryptionError(_:)`` if encryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if encryption fails
     public static func aesEncrypt(plaintext: Data, key: Data, iv: Data) throws -> Data {
         guard key.count == 32 else {
             throw NostrError.encryptionError(operation: .encrypt, reason: "Key must be 32 bytes")
@@ -940,7 +940,7 @@ public struct NIP06: Sendable {
     ///   - key: 32-byte decryption key
     ///   - iv: 16-byte initialization vector
     /// - Returns: Decrypted data
-    /// - Throws: ``NostrError/encryptionError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/encryptionError(operation:reason:)`` if decryption fails
     public static func aesDecrypt(ciphertext: Data, key: Data, iv: Data) throws -> Data {
         guard key.count == 32 else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "Key must be 32 bytes")

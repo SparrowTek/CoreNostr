@@ -243,7 +243,7 @@ public struct Bech32: Sendable {
     ///   - hrp: The human-readable part (e.g., "npub", "nsec")
     ///   - data: The data to encode
     /// - Returns: Bech32-encoded string
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if encoding fails
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if encoding fails
     public static func encode(hrp: String, data: Data) throws -> String {
         let values = try convertBits(from: Array(data), fromBits: 8, toBits: 5, pad: true)
         let checksum = createChecksum(hrp: hrp, values: values)
@@ -257,7 +257,7 @@ public struct Bech32: Sendable {
     ///
     /// - Parameter string: The bech32-encoded string to decode
     /// - Returns: A tuple containing the HRP and decoded data
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if decoding fails or checksum is invalid
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if decoding fails or checksum is invalid
     public static func decode(_ string: String) throws -> (hrp: String, data: Data) {
         guard let separatorIndex = string.lastIndex(of: "1") else {
             throw NostrError.invalidBech32(entity: "bech32", reason: "No separator character '1' found")
@@ -392,7 +392,7 @@ public extension Bech32Entity {
     /// ```
     ///
     /// - Returns: The bech32-encoded string
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if encoding fails
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if encoding fails
     var encoded: String {
         get throws {
             switch self {
@@ -451,7 +451,7 @@ public extension Bech32Entity {
     /// ```
     ///
     /// - Parameter string: The bech32-encoded string to decode
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if decoding fails or format is invalid
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if decoding fails or format is invalid
     init(from string: String) throws {
         let (hrp, data) = try Bech32.decode(string)
         
@@ -816,7 +816,7 @@ public extension PublicKey {
     /// ```
     ///
     /// - Returns: The npub-encoded string
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if encoding fails
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if encoding fails
     var npub: String {
         get throws {
             try Bech32Entity.npub(self).encoded
@@ -838,7 +838,7 @@ public extension PrivateKey {
     /// ```
     ///
     /// - Returns: The nsec-encoded string
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if encoding fails
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if encoding fails
     var nsec: String {
         get throws {
             try Bech32Entity.nsec(self).encoded
@@ -857,7 +857,7 @@ public extension EventID {
     /// ```
     ///
     /// - Returns: The note-encoded string
-    /// - Throws: ``NostrError/invalidBech32(_:)`` if encoding fails
+    /// - Throws: ``NostrError/invalidBech32(entity:reason:)`` if encoding fails
     var note: String {
         get throws {
             try Bech32Entity.note(self).encoded

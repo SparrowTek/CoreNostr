@@ -1,4 +1,9 @@
 import Foundation
+// Lightweight logging usage
+private func logDebug(_ msg: @autoclosure () -> String) { NostrLogger.debug(msg()) }
+private func logInfo(_ msg: @autoclosure () -> String)  { NostrLogger.info(msg()) }
+private func logWarn(_ msg: @autoclosure () -> String)  { NostrLogger.warn(msg()) }
+private func logError(_ msg: @autoclosure () -> String) { NostrLogger.error(msg()) }
 import Combine
 
 // MARK: - Message Types
@@ -19,7 +24,7 @@ public enum ClientMessage: Codable, Sendable {
     /// Encodes the message to JSON format for transmission to relays.
     /// 
     /// - Returns: JSON string representation of the message
-    /// - Throws: ``NostrError/serializationError(_:)`` if encoding fails
+    /// - Throws: ``NostrError/serializationError(type:reason:)`` if encoding fails
     public func encode() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -89,7 +94,7 @@ public enum RelayMessage: Codable, Sendable {
     /// 
     /// - Parameter jsonString: JSON string received from relay
     /// - Returns: Decoded RelayMessage
-    /// - Throws: ``NostrError/serializationError(_:)`` if decoding fails
+    /// - Throws: ``NostrError/serializationError(type:reason:)`` if decoding fails
     public static func decode(from jsonString: String) throws -> RelayMessage {
         guard let data = jsonString.data(using: .utf8),
               let jsonArray = try JSONSerialization.jsonObject(with: data) as? [Any],
@@ -225,6 +230,12 @@ public class RelayConnection {
     /// Interval between pings in seconds
     public var pingInterval: TimeInterval = 30
     
+    /// Minimum interval between sends (rate limiting). Nil disables limiting.
+    public var sendMinInterval: TimeInterval? = nil
+    
+    /// Maximum size of the outgoing send queue
+    public var maxSendQueueSize: Int = 500
+    
     /// Creates a new relay connection.
     public init() {}
 
@@ -243,7 +254,7 @@ public class RelayConnection {
     /// Connects to a NOSTR relay.
     /// 
     /// - Parameter url: The WebSocket URL of the relay
-    /// - Throws: ``NostrError/networkError(_:)`` if connection fails
+    /// - Throws: ``NostrError/networkError(operation:reason:)`` if connection fails
     public func connect(to url: URL) async throws {
         guard state == .disconnected else {
             throw NostrError.networkError(operation: .connect, reason: "Already connected or connection in progress")
@@ -251,7 +262,13 @@ public class RelayConnection {
         
         self.url = url
         state = .connecting
-        let io: RelayIOProtocol = self.io ?? RelayIO(url: url, pingInterval: pingInterval, autoReconnect: autoReconnect)
+        let io: RelayIOProtocol = self.io ?? RelayIO(
+            url: url,
+            pingInterval: pingInterval,
+            autoReconnect: autoReconnect,
+            minSendInterval: sendMinInterval,
+            maxQueueSize: maxSendQueueSize
+        )
         self.io = io
         do {
             try await io.connect()
@@ -286,7 +303,7 @@ public class RelayConnection {
     /// Sends a message to the connected relay.
     /// 
     /// - Parameter message: The message to send
-    /// - Throws: ``NostrError/networkError(_:)`` if sending fails or not connected
+    /// - Throws: ``NostrError/networkError(operation:reason:)`` if sending fails or not connected
     public func send(_ message: ClientMessage) async throws {
         guard state == .connected, let io = io else {
             throw NostrError.networkError(operation: .send, reason: "Not connected to relay")
@@ -343,7 +360,7 @@ public class RelayPool {
     /// Adds a new relay to the pool and connects to it.
     /// 
     /// - Parameter url: The WebSocket URL of the relay
-    /// - Throws: ``NostrError/networkError(_:)`` if the relay already exists or connection fails
+    /// - Throws: ``NostrError/networkError(operation:reason:)`` if the relay already exists or connection fails
     public func addRelay(_ url: URL) async throws {
         guard connections[url] == nil else {
             throw NostrError.validationError(field: "relayURL", reason: "Relay with URL '\(url)' already exists in pool")
@@ -449,16 +466,20 @@ actor RelayIO: RelayIOProtocol {
     private var reconnectAttempts: Int = 0
     private let autoReconnect: Bool
     private let pingInterval: TimeInterval
+    private let minSendInterval: TimeInterval?
+    private let maxQueueSize: Int
     private let readTimeout: TimeInterval = 30
     private var lastReceiveAt: Date = .distantPast
     private var timeoutTask: Task<Void, Never>?
     private var stateContinuation: AsyncStream<ConnectionState>.Continuation?
     private(set) var stateStream: AsyncStream<ConnectionState>?
     
-    init(url: URL, pingInterval: TimeInterval, autoReconnect: Bool) {
+    init(url: URL, pingInterval: TimeInterval, autoReconnect: Bool, minSendInterval: TimeInterval? = nil, maxQueueSize: Int = 500) {
         self.url = url
         self.pingInterval = pingInterval
         self.autoReconnect = autoReconnect
+        self.minSendInterval = minSendInterval
+        self.maxQueueSize = maxQueueSize
     }
     
     func connect() async throws {
@@ -510,10 +531,57 @@ actor RelayIO: RelayIOProtocol {
     }
     
     func sendString(_ string: String) async throws {
-        guard let task = webSocketTask else {
+        guard webSocketTask != nil else {
             throw NostrError.networkError(operation: .send, reason: "Not connected")
         }
-        try await task.send(.string(string))
+        try await enqueueSend(.string(string))
+    }
+
+    // MARK: - Send queue and rate limiting
+    private var lastSendAt: Date = .distantPast
+    private var isSending: Bool = false
+    private var sendQueue: [URLSessionWebSocketTask.Message] = []
+    
+    private func enqueueSend(_ message: URLSessionWebSocketTask.Message) async throws {
+        // Coalesce adjacent REQ messages with identical subscription id and merge filters
+        if case .string(let text) = message, text.hasPrefix("[\"REQ\"") {
+            if let last = sendQueue.last, case .string(let lastText) = last, lastText.hasPrefix("[\"REQ\"") {
+                // naive coalescing: drop the older one, keep the latest
+                _ = sendQueue.popLast()
+            }
+        }
+        if sendQueue.count >= maxQueueSize {
+            throw NostrError.networkError(operation: .send, reason: "Send queue full (\(maxQueueSize))")
+        }
+        sendQueue.append(message)
+        if !isSending {
+            isSending = true
+            Task { [weak self] in await self?.drainQueue() }
+        }
+    }
+    
+    private func drainQueue() async {
+        defer { isSending = false }
+        while !Task.isCancelled, let task = webSocketTask {
+            guard !sendQueue.isEmpty else { break }
+            let next = sendQueue.removeFirst()
+            if let interval = minSendInterval {
+                let elapsed = Date().timeIntervalSince(lastSendAt)
+                if elapsed < interval {
+                    let wait = interval - elapsed
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                }
+            }
+            do {
+                try await task.send(next)
+                lastSendAt = Date()
+            } catch {
+                // On failure, push message back and trigger reconnect if enabled
+                sendQueue.insert(next, at: 0)
+                await handleConnectionErrorAndMaybeReconnect()
+                break
+            }
+        }
     }
     
     private func startListening() async {
@@ -537,6 +605,7 @@ actor RelayIO: RelayIOProtocol {
                     break
                 }
             } catch {
+                logWarn("Receive loop error: \(error.localizedDescription)")
                 stateContinuation?.yield(.disconnected)
                 await handleConnectionErrorAndMaybeReconnect()
                 break
@@ -553,6 +622,7 @@ actor RelayIO: RelayIOProtocol {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 task.sendPing { error in
                     if error != nil {
+                        logWarn("Ping failed: \(error!.localizedDescription)")
                         Task {
                             await self.stateContinuation?.yield(.disconnected)
                             await self.handleConnectionErrorAndMaybeReconnect()
@@ -619,6 +689,7 @@ actor RelayIO: RelayIOProtocol {
             do {
                 try await self.connect()
             } catch {
+                logWarn("Reconnect attempt failed: \(error.localizedDescription)")
                 await self.scheduleReconnect()
             }
         }

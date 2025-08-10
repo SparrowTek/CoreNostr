@@ -24,6 +24,7 @@ let package = Package(
         .package(url: "https://github.com/bitcoindevkit/bdk-swift.git", from: "2.0.0"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
         .package(url: "https://github.com/SparrowTek/Vault.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.3.0"),
     ],
     targets: [
         .target(

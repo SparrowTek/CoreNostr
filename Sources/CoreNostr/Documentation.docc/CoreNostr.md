@@ -25,7 +25,7 @@ This library focuses on:
 
 ### Cryptography
 
-- ``Crypto``
+- ``NostrCrypto``
 - ``NIP44``
 - ``NIP06``
 
@@ -34,8 +34,6 @@ This library focuses on:
 - ``NostrDirectMessage``
 - ``NostrFollowList``
 - ``NostrOpenTimestamps``
-- ``NIP09``
-- ``NIP13``
 - ``NIP17``
 - ``NIP23``
 - ``NIP25``
@@ -55,7 +53,10 @@ This library focuses on:
 
 ### Networking and Discovery
 
-- ``NostrNIP05``
+- ``NostrNIP05Identifier``
+- ``NostrNIP05Response``
+- ``NostrNIP05Discovery``
+- ``NostrNIP05DiscoveryResult``
 - ``NIP11``
 - ``NIP42``
 - ``NIP57``
@@ -93,36 +94,7 @@ let note = try CoreNostr.createTextNote(
 let isValid = try CoreNostr.verifyEvent(note)
 ```
 
-## NIP Support
-
-CoreNostr implements numerous NIPs (Nostr Implementation Possibilities):
-
-- **NIP-01**: Basic protocol flow description
-- **NIP-06**: Basic key derivation from mnemonic seed phrase
-- **NIP-09**: Event deletion
-- **NIP-10**: Reply threading and mentions
-- **NIP-11**: Relay information document
-- **NIP-13**: Proof of Work
-- **NIP-17**: Private Direct Messages
-- **NIP-19**: bech32-encoded entities
-- **NIP-21**: nostr: URI scheme
-- **NIP-23**: Long-form Content
-- **NIP-25**: Reactions
-- **NIP-27**: Text Note References
-- **NIP-40**: Expiration Timestamp
-- **NIP-42**: Authentication of clients to relays
-- **NIP-44**: Encrypted Payloads (Versioned)
-- **NIP-50**: Search Capability
-- **NIP-51**: Lists
-- **NIP-56**: Reporting
-- **NIP-57**: Lightning Zaps
-- **NIP-58**: Badges
-- **NIP-59**: Gift Wrap
-- **NIP-65**: Relay List Metadata
-
 ## Important Notes
 
-- This library contains only protocol primitives and does not include networking code
-- Networking should be handled by the libraries that import CoreNostr
 - All cryptographic operations use industry-standard libraries
 - Comprehensive validation is performed on all inputs to ensure protocol compliance

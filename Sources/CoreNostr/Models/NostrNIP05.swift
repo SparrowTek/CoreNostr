@@ -51,7 +51,7 @@ public struct NostrNIP05Identifier: Codable, Hashable, Sendable {
     /// Creates a NIP-05 identifier from a string.
     ///
     /// - Parameter identifier: The identifier string in format "local@domain"
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the identifier format is invalid
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the identifier format is invalid
     public init(identifier: String) throws {
         let components = identifier.split(separator: "@", maxSplits: 1)
         guard components.count == 2 else {
@@ -84,7 +84,7 @@ public struct NostrNIP05Identifier: Codable, Hashable, Sendable {
     /// - Parameters:
     ///   - localPart: The local part (before @)
     ///   - domain: The domain part (after @)
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the parts are invalid
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the parts are invalid
     public init(localPart: String, domain: String) throws {
         try self.init(identifier: "\(localPart)@\(domain)")
     }

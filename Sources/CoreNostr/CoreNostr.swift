@@ -26,7 +26,7 @@ public struct CoreNostr {
     /// Creates a new random key pair.
     ///
     /// - Returns: A new ``KeyPair`` with randomly generated private and public keys
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if key generation fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if key generation fails
     public static func createKeyPair() throws -> KeyPair {
         return try KeyPair.generate()
     }
@@ -39,8 +39,8 @@ public struct CoreNostr {
     ///   - content: The content of the event
     ///   - tags: Optional tags for the event metadata
     /// - Returns: A signed ``NostrEvent`` ready for publishing
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if content is too large
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if content is too large
     public static func createEvent(
         keyPair: KeyPair,
         kind: EventKind,
@@ -63,8 +63,8 @@ public struct CoreNostr {
     ///
     /// - Parameter event: The event to verify
     /// - Returns: `true` if the event is valid, `false` otherwise
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event ID is invalid
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if verification fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the event ID is invalid
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if verification fails
     public static func verifyEvent(_ event: NostrEvent) throws -> Bool {
         // Validate event structure first
         try Validation.validateNostrEvent(event)
@@ -123,8 +123,8 @@ public struct CoreNostr {
     ///   - lud06: Lightning Address (LNURL-pay)
     ///   - lud16: Lightning Address (newer format)
     /// - Returns: A signed metadata event
-    /// - Throws: ``NostrError/serializationError(_:)`` if JSON encoding fails
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/serializationError(type:reason:)`` if JSON encoding fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public static func createMetadataEvent(
         keyPair: KeyPair,
         name: String?,
@@ -204,7 +204,7 @@ public struct CoreNostr {
     ///   - keyPair: The key pair to sign the event with
     ///   - follows: Array of follow entries representing followed profiles
     /// - Returns: A signed follow list event
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public static func createFollowListEvent(
         keyPair: KeyPair,
         follows: [FollowEntry]
@@ -225,7 +225,7 @@ public struct CoreNostr {
     ///   - relayURL: Optional relay URL where the attested event can be found
     ///   - otsData: The raw OTS file data containing the Bitcoin attestation
     /// - Returns: A signed OpenTimestamps attestation event
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public static func createOpenTimestampsEvent(
         keyPair: KeyPair,
         eventId: EventID,
@@ -247,8 +247,8 @@ public struct CoreNostr {
     ///   - relayURL: Optional relay URL where the attested event can be found
     ///   - base64OTSData: The base64-encoded OTS file data
     /// - Returns: A signed OpenTimestamps attestation event
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if base64 data is invalid
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if signing fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if base64 data is invalid
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if signing fails
     public static func createOpenTimestampsEventFromBase64(
         keyPair: KeyPair,
         eventId: EventID,
@@ -281,7 +281,7 @@ public struct CoreNostr {
     ///   - message: The plaintext message to encrypt
     ///   - replyToEventId: Optional event ID this message is replying to
     /// - Returns: A signed encrypted direct message event
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption or signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if encryption or signing fails
     @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17. Use only for backward compatibility.")
     public static func createDirectMessageEvent(
         senderKeyPair: KeyPair,
@@ -308,8 +308,8 @@ public struct CoreNostr {
     ///   - event: The encrypted direct message event to decrypt
     ///   - recipientKeyPair: The recipient's key pair for decryption
     /// - Returns: The decrypted plaintext message
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event is not a valid direct message
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the event is not a valid direct message
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if decryption fails
     @available(*, deprecated, message: "NIP-04 is deprecated in favor of NIP-17. Use only for backward compatibility.")
     public static func decryptDirectMessage(
         event: NostrEvent,
@@ -336,7 +336,7 @@ public struct CoreNostr {
     ///   - message: The plaintext message to encrypt
     ///   - replyToEventId: Optional event ID this message is replying to
     /// - Returns: A signed encrypted direct message event
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if encryption or signing fails
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if encryption or signing fails
     public static func createDirectMessageEventNIP44(
         senderKeyPair: KeyPair,
         recipientPublicKey: PublicKey,
@@ -376,8 +376,8 @@ public struct CoreNostr {
     ///   - event: The encrypted direct message event to decrypt
     ///   - recipientKeyPair: The recipient's key pair for decryption
     /// - Returns: The decrypted plaintext message
-    /// - Throws: ``NostrError/invalidEvent(_:)`` if the event is not a valid direct message
-    /// - Throws: ``NostrError/cryptographyError(_:)`` if decryption fails
+    /// - Throws: ``NostrError/invalidEvent(reason:)`` if the event is not a valid direct message
+    /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if decryption fails
     public static func decryptDirectMessageNIP44(
         event: NostrEvent,
         recipientKeyPair: KeyPair

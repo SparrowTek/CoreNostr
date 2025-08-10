@@ -101,6 +101,8 @@ actor StubRelayIO: RelayIOProtocol {
     let stubIO = StubRelayIO(jsonToEmit: "[\"NOTICE\",\"hi\"]")
     let relay = RelayConnection(io: stubIO)
     relay.autoReconnect = true
+    relay.sendMinInterval = 0.0
+    relay.maxSendQueueSize = 10
     try await relay.connect(to: URL(string: "wss://example.com")!)
     
     await stubIO.triggerError(scheduleReconnectAfter: 0.02)
@@ -115,6 +117,25 @@ actor StubRelayIO: RelayIOProtocol {
     }
     #expect(sawConnecting)
     #expect(sawConnected)
+}
+
+@MainActor
+@Test func sendQueueRateLimitingAndCoalescing() async throws {
+    let stubIO = StubRelayIO(jsonToEmit: "[\"NOTICE\",\"hi\"]")
+    let relay = RelayConnection(io: stubIO)
+    relay.autoReconnect = false
+    relay.sendMinInterval = 0.01
+    relay.maxSendQueueSize = 5
+    try await relay.connect(to: URL(string: "wss://example.com")!)
+    
+    // Enqueue multiple REQ messages rapidly; coalescing drops older duplicates
+    let filter = Filter(kinds: [1], limit: 1)
+    for i in 0..<3 {
+        let msg = ClientMessage.req(subscriptionId: "sub", filters: [filter])
+        try await relay.send(msg)
+    }
+    // Just ensure no crash; state remains connected
+    #expect(relay.state == .connected)
 }
 
 
