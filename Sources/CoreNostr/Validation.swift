@@ -134,6 +134,145 @@ public enum Validation {
         }
     }
     
+    /// Validates tag schema based on event kind
+    ///
+    /// - Parameters:
+    ///   - tags: The tags to validate
+    ///   - kind: The event kind
+    /// - Throws: NostrError if tags don't match expected schema
+    public static func validateTagSchema(tags: [[String]], for kind: Int) throws {
+        for tag in tags {
+            guard !tag.isEmpty else {
+                throw NostrError.invalidTag(tag: tag, reason: "Tag cannot be empty")
+            }
+            
+            let tagName = tag[0]
+            
+            // Validate common tag types
+            switch tagName {
+            case "e": // Event reference
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Event tag 'e' requires at least event ID")
+                }
+                // Validate event ID format
+                let eventId = tag[1]
+                guard isValidEventId(eventId) else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Invalid event ID in 'e' tag: \(eventId)")
+                }
+                // Optional relay URL at index 2
+                if tag.count > 2 && !tag[2].isEmpty {
+                    try validateRelayURL(tag[2])
+                }
+                // Optional marker at index 3 (reply, root, mention)
+                if tag.count > 3 {
+                    let validMarkers = ["reply", "root", "mention"]
+                    guard validMarkers.contains(tag[3]) else {
+                        throw NostrError.invalidTag(tag: tag, reason: "Invalid marker '\(tag[3])' in 'e' tag")
+                    }
+                }
+                
+            case "p": // Pubkey reference
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Pubkey tag 'p' requires at least public key")
+                }
+                let pubkey = tag[1]
+                guard isValidPublicKey(pubkey) else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Invalid public key in 'p' tag: \(pubkey)")
+                }
+                // Optional relay URL at index 2
+                if tag.count > 2 && !tag[2].isEmpty {
+                    try validateRelayURL(tag[2])
+                }
+                
+            case "a": // Parameterized replaceable event reference
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Address tag 'a' requires coordinate")
+                }
+                // Format: kind:pubkey:d-tag
+                let coordinate = tag[1]
+                let parts = coordinate.split(separator: ":", maxSplits: 2)
+                guard parts.count == 3 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Invalid coordinate format in 'a' tag")
+                }
+                
+            case "d": // Identifier for parameterized replaceable events
+                if kind >= 30000 && kind < 40000 {
+                    guard tag.count >= 2 else {
+                        throw NostrError.invalidTag(tag: tag, reason: "Identifier tag 'd' requires value for kind \(kind)")
+                    }
+                }
+                
+            case "r": // Reference/URL
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Reference tag 'r' requires URL")
+                }
+                
+            case "t": // Hashtag
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Hashtag tag 't' requires value")
+                }
+                
+            case "g": // Geohash
+                guard tag.count >= 2 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Geohash tag 'g' requires value")
+                }
+                
+            case "nonce": // Proof of work
+                guard tag.count >= 3 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Nonce tag requires [nonce, commitment, difficulty]")
+                }
+                
+            case "delegation": // Event delegation
+                guard tag.count >= 4 else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Delegation tag requires [pubkey, conditions, sig]")
+                }
+                let delegatorPubkey = tag[1]
+                guard isValidPublicKey(delegatorPubkey) else {
+                    throw NostrError.invalidTag(tag: tag, reason: "Invalid delegator pubkey in delegation tag")
+                }
+                
+            default:
+                // Unknown tags are allowed per protocol
+                break
+            }
+        }
+        
+        // Kind-specific validation
+        switch kind {
+        case 0: // Metadata
+            // No specific tag requirements
+            break
+            
+        case 1: // Text note
+            // Can have e and p tags for replies/mentions
+            break
+            
+        case 3: // Contact list
+            // Should have p tags for contacts
+            let hasPTags = tags.contains { $0.first == "p" }
+            if tags.isEmpty || !hasPTags {
+                // Warning: Contact list typically has p tags, but not required
+            }
+            
+        case 4: // Encrypted DM
+            // Must have exactly one p tag for recipient
+            let pTags = tags.filter { $0.first == "p" }
+            guard pTags.count == 1 else {
+                throw NostrError.invalidTag(tag: [], reason: "Kind 4 must have exactly one 'p' tag for recipient")
+            }
+            
+        case 30000...39999: // Parameterized replaceable
+            // Must have a d tag
+            let hasDTag = tags.contains { $0.first == "d" }
+            guard hasDTag else {
+                throw NostrError.invalidTag(tag: [], reason: "Parameterized replaceable events (kind \(kind)) must have a 'd' tag")
+            }
+            
+        default:
+            break
+        }
+    }
+    
     // MARK: - Relay URL Validation
     
     /// Validates a relay URL format.
@@ -231,6 +370,81 @@ public enum Validation {
         try validateContent(content, maxSize: maxSize)
     }
     
+    // MARK: - Timestamp Validation
+    
+    /// Validates a timestamp is within acceptable range
+    ///
+    /// - Parameters:
+    ///   - timestamp: Unix timestamp in seconds
+    ///   - maxFutureSkew: Maximum seconds into the future (default: 900 = 15 minutes)
+    ///   - maxPastSkew: Maximum seconds into the past (default: 31536000 = 1 year)
+    /// - Returns: True if timestamp is valid
+    public static func isValidTimestamp(_ timestamp: Int64, maxFutureSkew: TimeInterval = 900, maxPastSkew: TimeInterval = 31536000) -> Bool {
+        let now = Date().timeIntervalSince1970
+        let timestampInterval = TimeInterval(timestamp)
+        
+        // Check not too far in future
+        if timestampInterval > now + maxFutureSkew {
+            return false
+        }
+        
+        // Check not too far in past
+        if timestampInterval < now - maxPastSkew {
+            return false
+        }
+        
+        return true
+    }
+    
+    /// Validates a timestamp, throwing if invalid
+    ///
+    /// - Parameters:
+    ///   - timestamp: Unix timestamp in seconds
+    ///   - maxFutureSkew: Maximum seconds into the future
+    ///   - maxPastSkew: Maximum seconds into the past
+    /// - Throws: NostrError if timestamp is invalid
+    public static func validateTimestamp(_ timestamp: Int64, maxFutureSkew: TimeInterval = 900, maxPastSkew: TimeInterval = 31536000) throws {
+        let now = Date().timeIntervalSince1970
+        let timestampInterval = TimeInterval(timestamp)
+        
+        if timestampInterval > now + maxFutureSkew {
+            throw NostrError.invalidTimestamp(reason: "Timestamp is too far in the future (more than \(Int(maxFutureSkew)) seconds)")
+        }
+        
+        if timestampInterval < now - maxPastSkew {
+            throw NostrError.invalidTimestamp(reason: "Timestamp is too far in the past (more than \(Int(maxPastSkew)) seconds)")
+        }
+    }
+    
+    // MARK: - Hex Validation
+    
+    /// Validates a hex string has the expected length
+    ///
+    /// - Parameters:
+    ///   - hex: The hex string to validate
+    ///   - expectedLength: Expected character count
+    /// - Returns: True if valid
+    public static func isValidHex(_ hex: String, length expectedLength: Int) -> Bool {
+        guard hex.count == expectedLength else { return false }
+        return hex.allSatisfy { $0.isHexDigit }
+    }
+    
+    /// Validates a hex string, throwing if invalid
+    ///
+    /// - Parameters:
+    ///   - hex: The hex string to validate
+    ///   - expectedLength: Expected character count
+    ///   - field: Field name for error message
+    /// - Throws: NostrError if invalid
+    public static func validateHex(_ hex: String, length expectedLength: Int, field: String) throws {
+        guard hex.count == expectedLength else {
+            throw NostrError.invalidHex(hex: String(hex.prefix(20)) + "...", expectedLength: expectedLength)
+        }
+        guard hex.allSatisfy({ $0.isHexDigit }) else {
+            throw NostrError.invalidHex(hex: String(hex.prefix(20)) + "...", expectedLength: expectedLength)
+        }
+    }
+    
     // MARK: - Event Validation
     
     /// Validates a NostrEvent structure.
@@ -259,12 +473,11 @@ public enum Validation {
         // Validate content size
         try validateContent(event.content)
         
-        // Validate created_at is reasonable (not too far in future)
-        let now = Date().timeIntervalSince1970
-        let oneYearFromNow = now + (365 * 24 * 60 * 60)
-        guard TimeInterval(event.createdAt) <= oneYearFromNow else {
-            throw NostrError.invalidTimestamp(reason: "Event created_at is too far in the future (more than 1 year)")
-        }
+        // Validate timestamp
+        try validateTimestamp(event.createdAt)
+        
+        // Validate tag schema for the specific kind
+        try validateTagSchema(tags: event.tags, for: event.kind)
     }
 }
 
