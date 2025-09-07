@@ -264,4 +264,52 @@ struct NIP19Tests {
             #expect(decodedEvent.kind == kind)
         }
     }
+
+    @Test("Invalid TLV: nprofile missing pubkey should throw")
+    func testInvalidTLVProfileMissingPubkey() throws {
+        // Build TLV with only a relay entry (no special=0 pubkey)
+        let relay = "wss://relay.damus.io"
+        var tlv = Data()
+        tlv.append(1) // relay type
+        tlv.append(UInt8(relay.utf8.count))
+        tlv.append(contentsOf: relay.utf8)
+
+        let bech = try Bech32.encode(hrp: "nprofile", data: tlv)
+
+        #expect(throws: NostrError.self) {
+            _ = try Bech32Entity(from: bech)
+        }
+    }
+
+    @Test("Invalid TLV: nevent missing event id should throw")
+    func testInvalidTLVEventMissingId() throws {
+        // Build TLV with only author entry (no special=0 event id)
+        let author = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        var tlv = Data()
+        tlv.append(2) // author type
+        tlv.append(32) // length
+        tlv.append(contentsOf: Data(hex: author)!)
+
+        let bech = try Bech32.encode(hrp: "nevent", data: tlv)
+
+        #expect(throws: NostrError.self) {
+            _ = try Bech32Entity(from: bech)
+        }
+    }
+
+    @Test("Invalid TLV: naddr missing required fields should throw")
+    func testInvalidTLVAddrMissingFields() throws {
+        // Build TLV with only identifier (no author/kind)
+        let identifier = "my-article"
+        var tlv = Data()
+        tlv.append(0) // special type (identifier)
+        tlv.append(UInt8(identifier.utf8.count))
+        tlv.append(contentsOf: identifier.utf8)
+
+        let bech = try Bech32.encode(hrp: "naddr", data: tlv)
+
+        #expect(throws: NostrError.self) {
+            _ = try Bech32Entity(from: bech)
+        }
+    }
 }
