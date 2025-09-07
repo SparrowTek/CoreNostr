@@ -447,7 +447,7 @@ struct NIP19Tests {
             "test-article",  // Normal identifier
             "1234567890",  // Numeric
             "article-with-special-chars_123",  // Mixed
-            String(repeating: "x", 100),  // Long identifier
+            String(repeating: "x", count: 100),  // Long identifier
             "文章",  // Unicode
             "article with spaces"  // Spaces
         ]
@@ -563,7 +563,7 @@ struct NIP19Tests {
     @Test("Maximum length stress test")
     func testMaximumLengthHandling() throws {
         // Create naddr with maximum reasonable data
-        let identifier = String(repeating: "x", 200)
+        let identifier = String(repeating: "x", count: 200)
         let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
         let kind = 30023
         let relays = (1...20).map { "wss://relay\($0).example.com" }
