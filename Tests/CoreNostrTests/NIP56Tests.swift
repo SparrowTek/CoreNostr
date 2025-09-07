@@ -17,8 +17,8 @@ struct NIP56Tests {
     
     init() throws {
         reporterKeyPair = try KeyPair.generate()
-        reportedPubkey = "reported-user-pubkey-123456789"
-        eventId = "event-id-to-report-123456789"
+        reportedPubkey = String(repeating: "a", count: 64)
+        eventId = String(repeating: "b", count: 64)
     }
     
     @Test("Report event kind")

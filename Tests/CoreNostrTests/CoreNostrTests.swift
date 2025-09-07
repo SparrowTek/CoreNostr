@@ -71,7 +71,7 @@ import Foundation
     let event = NostrEvent(
         pubkey: pubkey,
         kind: 1,
-        tags: [["e", "event123"], ["p", "user456"]],
+        tags: [["e", String(repeating: "e", count: 64)], ["p", String(repeating: "f", count: 64)]],
         content: "Test content"
     )
     
@@ -89,7 +89,7 @@ import Foundation
         pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         createdAt: 1234567890,
         kind: 1,
-        tags: [["e", "event123"]],
+        tags: [["e", String(repeating: "e", count: 64)]],
         content: "Test content",
         sig: "testsig"
     )
@@ -121,15 +121,15 @@ import Foundation
         pubkey: "test",
         kind: 1,
         tags: [
-            ["e", "event123", "relay1"],
-            ["p", "user456"],
+            ["e", String(repeating: "e", count: 64), "relay1"],
+            ["p", String(repeating: "f", count: 64)],
             ["t", "hashtag"]
         ],
         content: "test"
     )
     
-    #expect(event.referencedEvents == ["event123"])
-    #expect(event.mentionedUsers == ["user456"])
+    #expect(event.referencedEvents == [String(repeating: "e", count: 64)])
+    #expect(event.mentionedUsers == [String(repeating: "f", count: 64)])
 }
 
 // MARK: - Filter Tests
@@ -138,16 +138,16 @@ import Foundation
     let until = Date(timeIntervalSince1970: 1234567900)
     
     let filter = Filter(
-        ids: ["event123"],
-        authors: ["author456"],
+        ids: [String(repeating: "e", count: 64)],
+        authors: [String(repeating: "c", count: 64)],
         kinds: [1, 2],
         since: since,
         until: until,
         limit: 10
     )
     
-    #expect(filter.ids == ["event123"])
-    #expect(filter.authors == ["author456"])
+    #expect(filter.ids == [String(repeating: "e", count: 64)])
+    #expect(filter.authors == [String(repeating: "c", count: 64)])
     #expect(filter.kinds == [1, 2])
     #expect(filter.since == 1234567890)
     #expect(filter.until == 1234567900)
@@ -168,9 +168,9 @@ import Foundation
     #expect(metadataFilter.authors == authors)
     #expect(metadataFilter.limit == 5)
     
-    let repliesFilter = Filter.replies(to: "event123", limit: 10)
+    let repliesFilter = Filter.replies(to: String(repeating: "e", count: 64), limit: 10)
     #expect(repliesFilter.kinds == [1])
-    #expect(repliesFilter.e == ["event123"])
+    #expect(repliesFilter.e == [String(repeating: "e", count: 64)])
     #expect(repliesFilter.limit == 10)
 }
 
@@ -214,7 +214,7 @@ import Foundation
     let okMessage = try RelayMessage.decode(from: okJson)
     
     if case .ok(let eventId, let accepted, let message) = okMessage {
-        #expect(eventId == "event123")
+        #expect(eventId == String(repeating: "e", count: 64))
         #expect(accepted == true)
         #expect(message == "success")
     } else {
@@ -457,8 +457,8 @@ import Foundation
     let keyPair = try CoreNostr.createKeyPair()
     
     let follows = [
-        FollowEntry(pubkey: "alice123", relayURL: "wss://alice.relay/", petname: "Alice"),
-        FollowEntry(pubkey: "bob456", relayURL: "wss://bob.relay/", petname: "Bob")
+        FollowEntry(pubkey: String(repeating: "a", count: 64), relayURL: "wss://alice.relay/", petname: "Alice"),
+        FollowEntry(pubkey: String(repeating: "b", count: 64), relayURL: "wss://bob.relay/", petname: "Bob")
     ]
     
     let followListEvent = try CoreNostr.createFollowListEvent(
@@ -505,7 +505,7 @@ import Foundation
     let mockOTSData = Data(otsMagic + [0x01, 0x02, 0x03, 0x04])
     
     let attestation = NostrOpenTimestamps(
-        eventId: "event123",
+        eventId: String(repeating: "e", count: 64),
         relayURL: "wss://relay.com",
         otsData: mockOTSData
     )
@@ -515,7 +515,7 @@ import Foundation
     
     #expect(event.kind == EventKind.openTimestamps.rawValue)
     #expect(event.tags.count == 2)
-    #expect(event.tags[0] == ["e", "event123", "wss://relay.com"])
+    #expect(event.tags[0] == ["e", String(repeating: "e", count: 64), "wss://relay.com"])
     #expect(event.tags[1] == ["alt", "opentimestamps attestation"])
     #expect(event.content == mockOTSData.base64EncodedString())
     #expect(event.pubkey == keyPair.publicKey)
@@ -533,7 +533,7 @@ import Foundation
         createdAt: 1234567890,
         kind: 1040,
         tags: [
-            ["e", "event123", "wss://relay.com"],
+            ["e", String(repeating: "e", count: 64), "wss://relay.com"],
             ["alt", "opentimestamps attestation"]
         ],
         content: base64OTS,
@@ -542,7 +542,7 @@ import Foundation
     
     let attestation = NostrOpenTimestamps.from(event: event)
     #expect(attestation != nil)
-    #expect(attestation?.eventId == "event123")
+    #expect(attestation?.eventId == String(repeating: "e", count: 64))
     #expect(attestation?.relayURL == "wss://relay.com")
     #expect(attestation?.otsData == mockOTSData)
     #expect(attestation?.isValidOTSData() == true)
@@ -582,20 +582,20 @@ import Foundation
     let base64OTS = mockOTSData.base64EncodedString()
     
     let attestation = NostrOpenTimestamps.fromBase64(
-        eventId: "event123",
+        eventId: String(repeating: "e", count: 64),
         relayURL: "wss://relay.com",
         base64OTSData: base64OTS
     )
     
     #expect(attestation != nil)
-    #expect(attestation?.eventId == "event123")
+    #expect(attestation?.eventId == String(repeating: "e", count: 64))
     #expect(attestation?.relayURL == "wss://relay.com")
     #expect(attestation?.otsData == mockOTSData)
     #expect(attestation?.base64EncodedOTSData == base64OTS)
     
     // Test invalid base64
     let invalidAttestation = NostrOpenTimestamps.fromBase64(
-        eventId: "event123",
+        eventId: String(repeating: "e", count: 64),
         base64OTSData: "invalid base64!!!"
     )
     #expect(invalidAttestation == nil)
@@ -604,17 +604,17 @@ import Foundation
 @Test func openTimestampsValidation() async throws {
     // Valid OTS data (with magic bytes)
     let validOTSData = Data([0x00, 0x4F, 0x54, 0x53, 0x01, 0x02, 0x03])
-    let validAttestation = NostrOpenTimestamps(eventId: "event123", otsData: validOTSData)
+    let validAttestation = NostrOpenTimestamps(eventId: String(repeating: "e", count: 64), otsData: validOTSData)
     #expect(validAttestation.isValidOTSData())
     
     // Invalid OTS data (wrong magic bytes)
     let invalidOTSData = Data([0x01, 0x02, 0x03, 0x04])
-    let invalidAttestation = NostrOpenTimestamps(eventId: "event123", otsData: invalidOTSData)
+    let invalidAttestation = NostrOpenTimestamps(eventId: String(repeating: "e", count: 64), otsData: invalidOTSData)
     #expect(!invalidAttestation.isValidOTSData())
     
     // Too short data
     let shortOTSData = Data([0x00, 0x4F])
-    let shortAttestation = NostrOpenTimestamps(eventId: "event123", otsData: shortOTSData)
+    let shortAttestation = NostrOpenTimestamps(eventId: String(repeating: "e", count: 64), otsData: shortOTSData)
     #expect(!shortAttestation.isValidOTSData())
 }
 
@@ -623,7 +623,7 @@ import Foundation
     #expect(EventKind.openTimestamps.description == "OpenTimestamps Attestation")
     
     let mockOTSData = Data([0x00, 0x4F, 0x54, 0x53, 0x01])
-    let attestation = NostrOpenTimestamps(eventId: "event123", otsData: mockOTSData)
+    let attestation = NostrOpenTimestamps(eventId: String(repeating: "e", count: 64), otsData: mockOTSData)
     let keyPair = try KeyPair.generate()
     let event = attestation.createEvent(pubkey: keyPair.publicKey)
     
@@ -638,14 +638,14 @@ import Foundation
     // Test creating from raw data
     let attestationEvent = try CoreNostr.createOpenTimestampsEvent(
         keyPair: keyPair,
-        eventId: "event123",
+        eventId: String(repeating: "e", count: 64),
         relayURL: "wss://relay.com",
         otsData: mockOTSData
     )
     
     #expect(attestationEvent.isOpenTimestamps)
     #expect(attestationEvent.tags.count == 2)
-    #expect(attestationEvent.tags[0] == ["e", "event123", "wss://relay.com"])
+    #expect(attestationEvent.tags[0] == ["e", String(repeating: "e", count: 64), "wss://relay.com"])
     #expect(attestationEvent.tags[1] == ["alt", "opentimestamps attestation"])
     #expect(attestationEvent.content == mockOTSData.base64EncodedString())
     
@@ -665,10 +665,10 @@ import Foundation
     #expect(base64Event.content == base64OTS)
     
     // Test filter
-    let filter = Filter.openTimestamps(authors: [keyPair.publicKey], eventIds: ["event123"], limit: 10)
+    let filter = Filter.openTimestamps(authors: [keyPair.publicKey], eventIds: [String(repeating: "e", count: 64)], limit: 10)
     #expect(filter.kinds == [1040])
     #expect(filter.authors == [keyPair.publicKey])
-    #expect(filter.e == ["event123"])
+    #expect(filter.e == [String(repeating: "e", count: 64)])
     #expect(filter.limit == 10)
     
     // Test error with invalid base64
@@ -838,13 +838,13 @@ import Foundation
         senderKeyPair: senderKeyPair,
         recipientPublicKey: recipientKeyPair.publicKey,
         message: message,
-        replyToEventId: "reply789"
+        replyToEventId: String(repeating: "d", count: 64)
     )
     
     #expect(encryptedEvent.isEncryptedDirectMessage)
     #expect(encryptedEvent.tags.count == 2)
     #expect(encryptedEvent.tags[0] == ["p", recipientKeyPair.publicKey])
-    #expect(encryptedEvent.tags[1] == ["e", "reply789"])
+    #expect(encryptedEvent.tags[1] == ["e", String(repeating: "d", count: 64)])
     
     let isValid = try CoreNostr.verifyEvent(encryptedEvent)
     #expect(isValid)
