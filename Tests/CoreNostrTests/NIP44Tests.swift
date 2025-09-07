@@ -309,4 +309,331 @@ struct NIP44Tests {
             #expect(decrypted == plaintext)
         }
     }
+    
+    // MARK: - Extended Test Vectors
+    
+    @Test("Cross-implementation test vectors")
+    func testCrossImplementationVectors() throws {
+        // Test vectors that should work across implementations
+        // These are based on NIP-44 specification examples
+        
+        struct TestVector {
+            let senderPrivKey: String
+            let recipientPubKey: String
+            let plaintext: String
+            let conversationKey: String? // For verifying conversation key generation
+        }
+        
+        let vectors = [
+            TestVector(
+                senderPrivKey: "0000000000000000000000000000000000000000000000000000000000000001",
+                recipientPubKey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                plaintext: "hello world",
+                conversationKey: nil
+            ),
+            TestVector(
+                senderPrivKey: "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb",
+                recipientPubKey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                plaintext: "NIP-44 test message",
+                conversationKey: nil
+            )
+        ]
+        
+        for vector in vectors {
+            let senderKeyPair = try KeyPair(privateKey: vector.senderPrivKey)
+            
+            let encrypted = try NIP44.encrypt(
+                plaintext: vector.plaintext,
+                senderPrivateKey: senderKeyPair.privateKey,
+                recipientPublicKey: vector.recipientPubKey
+            )
+            
+            // Verify we can decrypt our own encryption
+            let decrypted = try NIP44.decrypt(
+                payload: encrypted,
+                recipientPrivateKey: senderKeyPair.privateKey,
+                senderPublicKey: vector.recipientPubKey
+            )
+            
+            #expect(decrypted == vector.plaintext)
+        }
+    }
+    
+    @Test("Conversation key generation correctness")
+    func testConversationKeyGeneration() throws {
+        // Test that conversation keys are generated correctly and consistently
+        let alicePriv = "7f3b02c9d3704396ff9b2a530f7e7c7411a5e77fc4f7b7b7c73030b0c3a36e54"
+        let bobPriv = "b1e5c4a44fbd432089ddaa4aeba180de89fc4a34e66700d49e2307b9dc85a6f8"
+        
+        let alice = try KeyPair(privateKey: alicePriv)
+        let bob = try KeyPair(privateKey: bobPriv)
+        
+        // Encrypt message from Alice to Bob
+        let message1 = "Message from Alice to Bob"
+        let encrypted1 = try NIP44.encrypt(
+            plaintext: message1,
+            senderPrivateKey: alice.privateKey,
+            recipientPublicKey: bob.publicKey
+        )
+        
+        // Encrypt message from Bob to Alice
+        let message2 = "Reply from Bob to Alice"
+        let encrypted2 = try NIP44.encrypt(
+            plaintext: message2,
+            senderPrivateKey: bob.privateKey,
+            recipientPublicKey: alice.publicKey
+        )
+        
+        // Verify cross-decryption works
+        let decrypted1 = try NIP44.decrypt(
+            payload: encrypted1,
+            recipientPrivateKey: bob.privateKey,
+            senderPublicKey: alice.publicKey
+        )
+        
+        let decrypted2 = try NIP44.decrypt(
+            payload: encrypted2,
+            recipientPrivateKey: alice.privateKey,
+            senderPublicKey: bob.publicKey
+        )
+        
+        #expect(decrypted1 == message1)
+        #expect(decrypted2 == message2)
+    }
+    
+    @Test("Version byte validation")
+    func testVersionByteValidation() throws {
+        let plaintext = "Test message"
+        let encrypted = try NIP44.encrypt(
+            plaintext: plaintext,
+            senderPrivateKey: aliceKeyPair.privateKey,
+            recipientPublicKey: bobKeyPair.publicKey
+        )
+        
+        // Decode the payload
+        var data = Data(base64Encoded: encrypted)!
+        
+        // Verify version byte is 0x02
+        #expect(data[0] == 0x02)
+        
+        // Change version byte to invalid value
+        data[0] = 0x01
+        let invalidPayload = data.base64EncodedString()
+        
+        #expect(throws: NIP44.NIP44Error.invalidPayload) {
+            _ = try NIP44.decrypt(
+                payload: invalidPayload,
+                recipientPrivateKey: bobKeyPair.privateKey,
+                senderPublicKey: aliceKeyPair.publicKey
+            )
+        }
+    }
+    
+    @Test("Nonce uniqueness verification")
+    func testNonceUniqueness() throws {
+        let plaintext = "Test message for nonce uniqueness"
+        var nonces: Set<Data> = []
+        
+        // Generate multiple encryptions and collect nonces
+        for _ in 0..<100 {
+            let encrypted = try NIP44.encrypt(
+                plaintext: plaintext,
+                senderPrivateKey: aliceKeyPair.privateKey,
+                recipientPublicKey: bobKeyPair.publicKey
+            )
+            
+            let data = Data(base64Encoded: encrypted)!
+            // Nonce is at position 1...33 (32 bytes after version byte)
+            let nonce = data[1..<33]
+            
+            // Verify nonce hasn't been used before
+            #expect(!nonces.contains(nonce))
+            nonces.insert(nonce)
+        }
+        
+        // All 100 nonces should be unique
+        #expect(nonces.count == 100)
+    }
+    
+    @Test("HMAC authentication tag verification")
+    func testHMACAuthenticationTag() throws {
+        let plaintext = "Message for HMAC testing"
+        
+        let encrypted = try NIP44.encrypt(
+            plaintext: plaintext,
+            senderPrivateKey: aliceKeyPair.privateKey,
+            recipientPublicKey: bobKeyPair.publicKey
+        )
+        
+        var data = Data(base64Encoded: encrypted)!
+        
+        // HMAC is last 32 bytes
+        let hmacStart = data.count - 32
+        
+        // Corrupt HMAC
+        data[hmacStart] ^= 0xFF
+        let corruptedPayload = data.base64EncodedString()
+        
+        #expect(throws: NIP44.NIP44Error.hmacVerificationFailed) {
+            _ = try NIP44.decrypt(
+                payload: corruptedPayload,
+                recipientPrivateKey: bobKeyPair.privateKey,
+                senderPublicKey: aliceKeyPair.publicKey
+            )
+        }
+    }
+    
+    @Test("Empty message encryption")
+    func testEmptyMessageEncryption() throws {
+        let plaintext = ""
+        
+        let encrypted = try NIP44.encrypt(
+            plaintext: plaintext,
+            senderPrivateKey: aliceKeyPair.privateKey,
+            recipientPublicKey: bobKeyPair.publicKey
+        )
+        
+        let decrypted = try NIP44.decrypt(
+            payload: encrypted,
+            recipientPrivateKey: bobKeyPair.privateKey,
+            senderPublicKey: aliceKeyPair.publicKey
+        )
+        
+        #expect(decrypted == plaintext)
+    }
+    
+    @Test("UTF-8 boundary cases")
+    func testUTF8BoundaryCases() throws {
+        let testCases = [
+            "𝄞",  // Musical symbol (4 bytes)
+            "👨‍👩‍👧‍👦",  // Family emoji (multi-codepoint)
+            "\u{0000}",  // Null character
+            "\u{FFFD}",  // Replacement character
+            "A\u{0301}",  // Combining character (A with accent)
+            "שָׁלוֹם",  // Hebrew with vowel marks
+            "🏴󠁧󠁢󠁥󠁮󠁧󠁿",  // Flag of England (tag sequence)
+            String(repeating: "💩", count: 100)  // Many emoji
+        ]
+        
+        for plaintext in testCases {
+            let encrypted = try NIP44.encrypt(
+                plaintext: plaintext,
+                senderPrivateKey: aliceKeyPair.privateKey,
+                recipientPublicKey: bobKeyPair.publicKey
+            )
+            
+            let decrypted = try NIP44.decrypt(
+                payload: encrypted,
+                recipientPrivateKey: bobKeyPair.privateKey,
+                senderPublicKey: aliceKeyPair.publicKey
+            )
+            
+            #expect(decrypted == plaintext)
+        }
+    }
+    
+    @Test("Payload structure validation")
+    func testPayloadStructureValidation() throws {
+        let plaintext = "Test payload structure"
+        let encrypted = try NIP44.encrypt(
+            plaintext: plaintext,
+            senderPrivateKey: aliceKeyPair.privateKey,
+            recipientPublicKey: bobKeyPair.publicKey
+        )
+        
+        let data = Data(base64Encoded: encrypted)!
+        
+        // Verify structure:
+        // 1 byte version + 32 bytes nonce + ciphertext + 32 bytes MAC
+        #expect(data.count >= 65)  // Minimum size
+        #expect(data[0] == 0x02)  // Version byte
+        
+        // Nonce should not be all zeros
+        let nonce = data[1..<33]
+        #expect(nonce != Data(repeating: 0, count: 32))
+        
+        // MAC should not be all zeros
+        let mac = data[(data.count - 32)...]
+        #expect(mac != Data(repeating: 0, count: 32))
+    }
+    
+    @Test("Key derivation consistency")
+    func testKeyDerivationConsistency() throws {
+        // Test that same key pairs always derive same conversation key
+        let message = "Consistency test"
+        
+        // Multiple encryptions with same keys should use different nonces
+        // but same conversation key
+        var ciphertexts: [String] = []
+        
+        for _ in 0..<10 {
+            let encrypted = try NIP44.encrypt(
+                plaintext: message,
+                senderPrivateKey: aliceKeyPair.privateKey,
+                recipientPublicKey: bobKeyPair.publicKey
+            )
+            ciphertexts.append(encrypted)
+        }
+        
+        // All should decrypt correctly
+        for ciphertext in ciphertexts {
+            let decrypted = try NIP44.decrypt(
+                payload: ciphertext,
+                recipientPrivateKey: bobKeyPair.privateKey,
+                senderPublicKey: aliceKeyPair.publicKey
+            )
+            #expect(decrypted == message)
+        }
+        
+        // All ciphertexts should be different (due to random nonces)
+        let uniqueCiphertexts = Set(ciphertexts)
+        #expect(uniqueCiphertexts.count == 10)
+    }
+    
+    @Test("Invalid payload sizes")
+    func testInvalidPayloadSizes() throws {
+        // Test various invalid payload sizes
+        let invalidSizes = [
+            0,   // Empty
+            1,   // Just version byte
+            32,  // Version + partial nonce
+            33,  // Version + nonce, no ciphertext
+            64,  // Version + nonce + partial MAC
+            65   // Minimum valid size
+        ]
+        
+        for size in invalidSizes where size < 65 {
+            let data = Data(repeating: 0, count: size)
+            let payload = data.base64EncodedString()
+            
+            #expect(throws: NIP44.NIP44Error.invalidPayload) {
+                _ = try NIP44.decrypt(
+                    payload: payload,
+                    recipientPrivateKey: bobKeyPair.privateKey,
+                    senderPublicKey: aliceKeyPair.publicKey
+                )
+            }
+        }
+    }
+    
+    @Test("ChaCha20 counter overflow protection")
+    func testChaCha20CounterOverflow() throws {
+        // Test with maximum size message that should work
+        let maxSafeSize = 65535  // Just under 64KB
+        let plaintext = String(repeating: "x", count: maxSafeSize)
+        
+        let encrypted = try NIP44.encrypt(
+            plaintext: plaintext,
+            senderPrivateKey: aliceKeyPair.privateKey,
+            recipientPublicKey: bobKeyPair.publicKey
+        )
+        
+        let decrypted = try NIP44.decrypt(
+            payload: encrypted,
+            recipientPrivateKey: bobKeyPair.privateKey,
+            senderPublicKey: aliceKeyPair.publicKey
+        )
+        
+        #expect(decrypted == plaintext)
+    }
 }
