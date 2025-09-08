@@ -215,8 +215,12 @@ public struct EventBuilder: Sendable {
         var tag = ["e", eventId]
         if let relay = relay {
             tag.append(relay)
+            tag.append("reply")
+        } else {
+            // When no relay is specified, add empty string for relay position
+            tag.append("")
+            tag.append("reply")
         }
-        tag.append("reply")
         builder.tags.append(tag)
         return builder
     }
@@ -231,8 +235,12 @@ public struct EventBuilder: Sendable {
         var tag = ["e", eventId]
         if let relay = relay {
             tag.append(relay)
+            tag.append("root")
+        } else {
+            // When no relay is specified, add empty string for relay position
+            tag.append("")
+            tag.append("root")
         }
-        tag.append("root")
         builder.tags.append(tag)
         return builder
     }

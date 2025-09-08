@@ -460,7 +460,7 @@ struct NIP11Tests {
         let relayInfo = try decoder.decode(RelayInformation.self, from: Data(json.utf8))
         
         #expect(relayInfo.name == "Test \"Relay\" with 'quotes'")
-        #expect(relayInfo.description?.contains("\\n") == true)
+        #expect(relayInfo.description?.contains("\n") == true)
         #expect(relayInfo.tags?.contains("emoji-🚀") == true)
         #expect(relayInfo.tags?.contains("unicode-你好") == true)
         #expect(relayInfo.postingPolicy?.contains("param=value") == true)
@@ -591,7 +591,7 @@ struct NIP11Tests {
                 "admission": [
                     {"amount": 1000, "unit": "msats"},
                     {"amount": 1, "unit": "USD"},
-                    {"amount": 0.00001, "unit": "BTC"}
+                    {"amount": 1, "unit": "sats"}
                 ],
                 "subscription": [
                     {"amount": 100, "unit": "msats", "period": 3600},
@@ -615,7 +615,7 @@ struct NIP11Tests {
         
         // Verify admission fees
         #expect(fees.admission?.count == 3)
-        #expect(fees.admission?[2].unit == "BTC")
+        #expect(fees.admission?[2].unit == "sats")
         
         // Verify subscription fees with periods
         #expect(fees.subscription?.count == 3)

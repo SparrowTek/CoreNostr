@@ -10,7 +10,6 @@
 import Foundation
 import CryptoKit
 import P256K
-import CryptoSwift
 
 /// NIP-44 Encrypted Payloads
 public enum NIP44 {
@@ -317,14 +316,11 @@ public enum NIP44 {
         nonce: Data
     ) throws -> Data {
         // ChaCha20 uses a 12-byte nonce, we use first 12 bytes of our 32-byte nonce
-        let chachaNonceData = Array(nonce[0..<12])
-        let keyArray = Array(key)
-        let plaintextArray = Array(plaintext)
+        let chachaNonce = Data(nonce[0..<12])
         
         do {
-            let chacha = try CryptoSwift.ChaCha20(key: keyArray, iv: chachaNonceData)
-            let encrypted = try chacha.encrypt(plaintextArray)
-            return Data(encrypted)
+            let chacha = try ChaCha20(key: key, nonce: chachaNonce)
+            return chacha.process(plaintext)
         } catch {
             throw NIP44Error.encryptionFailed
         }
@@ -337,14 +333,11 @@ public enum NIP44 {
         nonce: Data
     ) throws -> Data {
         // ChaCha20 uses a 12-byte nonce
-        let chachaNonceData = Array(nonce[0..<12])
-        let keyArray = Array(key)
-        let ciphertextArray = Array(ciphertext)
+        let chachaNonce = Data(nonce[0..<12])
         
         do {
-            let chacha = try CryptoSwift.ChaCha20(key: keyArray, iv: chachaNonceData)
-            let decrypted = try chacha.decrypt(ciphertextArray)
-            return Data(decrypted)
+            let chacha = try ChaCha20(key: key, nonce: chachaNonce)
+            return chacha.process(ciphertext)
         } catch {
             throw NIP44Error.decryptionFailed
         }

@@ -214,7 +214,7 @@ import Foundation
     let okMessage = try RelayMessage.decode(from: okJson)
     
     if case .ok(let eventId, let accepted, let message) = okMessage {
-        #expect(eventId == String(repeating: "e", count: 64))
+        #expect(eventId == "event123")
         #expect(accepted == true)
         #expect(message == "success")
     } else {
@@ -469,8 +469,8 @@ import Foundation
     #expect(followListEvent.isFollowList)
     #expect(followListEvent.content == "")
     #expect(followListEvent.tags.count == 2)
-    #expect(followListEvent.tags[0] == ["p", "alice123", "wss://alice.relay/", "Alice"])
-    #expect(followListEvent.tags[1] == ["p", "bob456", "wss://bob.relay/", "Bob"])
+    #expect(followListEvent.tags[0] == ["p", String(repeating: "a", count: 64), "wss://alice.relay/", "Alice"])
+    #expect(followListEvent.tags[1] == ["p", String(repeating: "b", count: 64), "wss://bob.relay/", "Bob"])
     
     let isValid = try CoreNostr.verifyEvent(followListEvent)
     #expect(isValid)

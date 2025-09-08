@@ -1,5 +1,5 @@
 {
-  "originHash" : "cbef7b0ca45135845672025a743c656b5ca30385ec4623905a3115e257ffcd73",
+  "originHash" : "1b098f923f67f982f3cd07e538ae0f7cde5abf515d3af4d93103bad0c97a8ebb",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -17,15 +17,6 @@
       "state" : {
         "revision" : "99c4b9fb0f52dc9182aee106b07c3d205583b98c",
         "version" : "5.6.0"
-      }
-    },
-    {
-      "identity" : "cryptoswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
-      "state" : {
-        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
-        "version" : "1.9.0"
       }
     },
     {

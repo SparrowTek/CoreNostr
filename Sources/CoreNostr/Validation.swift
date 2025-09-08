@@ -179,8 +179,10 @@ public enum Validation {
                 guard isValidPublicKey(pubkey) else {
                     throw NostrError.invalidTag(tag: tag, reason: "Invalid public key in 'p' tag: \(pubkey)")
                 }
-                // Optional relay URL at index 2
-                if tag.count > 2 && !tag[2].isEmpty {
+                // Optional third field - could be relay URL or other data depending on context
+                // For NIP-56 reports (kind 1984), the third field is the report type, not a relay URL
+                if tag.count > 2 && !tag[2].isEmpty && kind != 1984 {
+                    // Only validate as relay URL if not a report event
                     try validateRelayURL(tag[2])
                 }
                 

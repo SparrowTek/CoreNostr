@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-import CryptoSwift
 @testable import CoreNostr
 
 @Suite("Fuzz Tests: Malformed input and boundary conditions")
@@ -379,16 +378,22 @@ struct FuzzTests {
         ]
         
         for input in fuzzInputs {
-            // Test hex validation using our validator
-            let isValidHex = input.count % 2 == 0 && !input.isEmpty && input.allSatisfy({ $0.isHexDigit })
+            // Test hex validation - our Data(hex:) accepts empty strings and returns empty Data
+            let cleanInput = input.replacingOccurrences(of: " ", with: "")
+            let isValidHex = cleanInput.count % 2 == 0 && cleanInput.allSatisfy({ $0.isHexDigit })
             
             if isValidHex {
-                // Valid hex should work with CryptoSwift's non-optional init
-                let data = Data(Array<UInt8>(hex: input))
-                #expect(data.count == input.count / 2)
+                // Valid hex should work with our Data(hex:) initializer
+                if let data = Data(hex: input) {
+                    #expect(data.count == cleanInput.count / 2)
+                } else {
+                    // Data(hex:) returned nil for what we thought was valid hex
+                    Issue.record("Data(hex:) returned nil for supposedly valid hex: \(input)")
+                }
             } else {
-                // Invalid hex - we just verify our validation logic
-                #expect(!isValidHex)
+                // Invalid hex - verify Data(hex:) returns nil
+                let data = Data(hex: input)
+                #expect(data == nil)
             }
         }
     }

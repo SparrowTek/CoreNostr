@@ -2,7 +2,6 @@ import Foundation
 import Crypto
 import CryptoKit
 import P256K
-import CryptoSwift
 
 // MARK: - KeyPair
 
@@ -339,9 +338,7 @@ public struct NostrCrypto: Sendable {
         
         do {
             // Use AES-256-CBC encryption with PKCS7 padding
-            let aes = try AES(key: Array(sharedSecret), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
-            let encrypted = try aes.encrypt(Array(messageData))
-            let encryptedData = Data(encrypted)
+            let encryptedData = try AES256CBC.encrypt(data: messageData, key: sharedSecret, iv: iv)
             
             let encryptedBase64 = encryptedData.base64EncodedString()
             let ivBase64 = iv.base64EncodedString()
@@ -384,9 +381,7 @@ public struct NostrCrypto: Sendable {
         
         do {
             // Use AES-256-CBC decryption with PKCS7 padding
-            let aes = try AES(key: Array(sharedSecret), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
-            let decrypted = try aes.decrypt(Array(encryptedData))
-            let decryptedData = Data(decrypted)
+            let decryptedData = try AES256CBC.decrypt(data: encryptedData, key: sharedSecret, iv: iv)
             
             guard let decryptedString = String(data: decryptedData, encoding: .utf8) else {
                 throw NostrError.encryptionError(operation: .decrypt, reason: "Decrypted data is not valid UTF-8 text")
@@ -684,21 +679,18 @@ public struct BIP39: Sendable {
         let normalizedMnemonic = mnemonic.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPassphrase = "mnemonic" + passphrase
         
-        // PBKDF2 with HMAC-SHA512 using CryptoSwift
+        // PBKDF2 with HMAC-SHA512
         let mnemonicData = normalizedMnemonic.data(using: .utf8)!
         let passphraseData = normalizedPassphrase.data(using: .utf8)!
         
-        // Use CryptoSwift's PBKDF2 implementation
+        // Use our PBKDF2 implementation
         do {
-            let derivedBytes = try PKCS5.PBKDF2(
-                password: Array(mnemonicData),
-                salt: Array(passphraseData),
+            return try PBKDF2.pbkdf2SHA512(
+                password: mnemonicData,
+                salt: passphraseData,
                 iterations: 2048,
-                keyLength: 64,
-                variant: .sha2(.sha512)
-            ).calculate()
-            
-            return Data(derivedBytes)
+                keyLength: 64
+            )
         } catch {
             throw NostrError.cryptographyError(operation: .keyDerivation, reason: "PBKDF2 derivation failed: \(error.localizedDescription)")
         }
@@ -910,9 +902,7 @@ public struct NIP06: Sendable {
         }
         
         do {
-            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
-            let encrypted = try aes.encrypt(Array(plaintext))
-            return Data(encrypted)
+            return try AES256CBC.encrypt(data: plaintext, key: key, iv: iv)
         } catch {
             throw NostrError.encryptionError(operation: .encrypt, reason: error.localizedDescription)
         }
@@ -935,9 +925,7 @@ public struct NIP06: Sendable {
         }
         
         do {
-            let aes = try AES(key: Array(key), blockMode: CBC(iv: Array(iv)), padding: .pkcs7)
-            let decrypted = try aes.decrypt(Array(ciphertext))
-            return Data(decrypted)
+            return try AES256CBC.decrypt(data: ciphertext, key: key, iv: iv)
         } catch {
             throw NostrError.encryptionError(operation: .decrypt, reason: error.localizedDescription)
         }
