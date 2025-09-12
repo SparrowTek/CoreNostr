@@ -113,6 +113,23 @@ public enum EventKind: Int, CaseIterable, Sendable, Codable {
     /// Client authentication (NIP-42)
     case clientAuthentication = 22242
     
+    // MARK: - NIP-47 Nostr Wallet Connect
+    
+    /// Wallet service info event (NIP-47)
+    case nwcInfo = 13194
+    
+    /// Wallet connect request (NIP-47)
+    case nwcRequest = 23194
+    
+    /// Wallet connect response (NIP-47)
+    case nwcResponse = 23195
+    
+    /// Wallet connect notification - NIP-04 encrypted (NIP-47) - Legacy
+    case nwcNotificationLegacy = 23196
+    
+    /// Wallet connect notification - NIP-44 encrypted (NIP-47)
+    case nwcNotification = 23197
+    
     /// Human-readable description of the event kind.
     public var description: String {
         switch self {
@@ -148,6 +165,11 @@ public enum EventKind: Int, CaseIterable, Sendable, Codable {
         case .longFormContent: return "Long-form Content"
         case .longFormDraft: return "Long-form Draft"
         case .clientAuthentication: return "Client Authentication"
+        case .nwcInfo: return "NWC Info"
+        case .nwcRequest: return "NWC Request"
+        case .nwcResponse: return "NWC Response"
+        case .nwcNotificationLegacy: return "NWC Notification (Legacy)"
+        case .nwcNotification: return "NWC Notification"
         }
     }
 }
