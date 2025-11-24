@@ -312,7 +312,7 @@ struct NIP44Tests {
     
     // MARK: - Extended Test Vectors
     
-    @Test("Cross-implementation test vectors", .disabled("NIP-44 crypto implementation needs verification"))
+    @Test("Cross-implementation test vectors")
     func testCrossImplementationVectors() throws {
         // Test vectors that should work across implementations
         // These are based on NIP-44 specification examples
@@ -339,16 +339,43 @@ struct NIP44Tests {
             )
         ]
         
+        let deterministicNonce = Data(repeating: 0x11, count: 32)
+        
         for vector in vectors {
             let senderKeyPair = try KeyPair(privateKey: vector.senderPrivKey)
             
             let encrypted = try NIP44.encrypt(
                 plaintext: vector.plaintext,
                 senderPrivateKey: senderKeyPair.privateKey,
-                recipientPublicKey: vector.recipientPubKey
+                recipientPublicKey: vector.recipientPubKey,
+                nonce: deterministicNonce
             )
             
             // Verify we can decrypt our own encryption
+            let payloadData = Data(base64Encoded: encrypted)!
+            
+            // Validate structure: version + nonce + ciphertext + hmac
+            #expect(payloadData.first == 0x02)
+            #expect(payloadData[1..<33] == deterministicNonce[0..<32])
+            
+            // Verify HMAC matches recomputation
+            let sharedSecret = try NIP44.testSharedSecret(
+                privateKey: vector.senderPrivKey,
+                publicKey: vector.recipientPubKey
+            )
+            let (encryptionKey, hmacKey) = try NIP44.testDerivedKeys(
+                sharedSecret: sharedSecret,
+                nonce: deterministicNonce
+            )
+            
+            let hmacStart = payloadData.count - 32
+            let computedHMAC = NIP44.testComputeHMAC(
+                payload: Data(payloadData[..<hmacStart]),
+                key: hmacKey
+            )
+            #expect(Data(computedHMAC) == Data(payloadData[hmacStart...]))
+            
+            // Decrypt using production path
             let decrypted = try NIP44.decrypt(
                 payload: encrypted,
                 recipientPrivateKey: senderKeyPair.privateKey,
@@ -483,26 +510,20 @@ struct NIP44Tests {
         }
     }
     
-    @Test("Empty message encryption", .disabled("NIP-44 empty message handling needs investigation"))
+    @Test("Empty message encryption")
     func testEmptyMessageEncryption() throws {
         let plaintext = ""
         
-        let encrypted = try NIP44.encrypt(
-            plaintext: plaintext,
-            senderPrivateKey: aliceKeyPair.privateKey,
-            recipientPublicKey: bobKeyPair.publicKey
-        )
-        
-        let decrypted = try NIP44.decrypt(
-            payload: encrypted,
-            recipientPrivateKey: bobKeyPair.privateKey,
-            senderPublicKey: aliceKeyPair.publicKey
-        )
-        
-        #expect(decrypted == plaintext)
+        #expect(throws: NIP44.NIP44Error.invalidPayload) {
+            _ = try NIP44.encrypt(
+                plaintext: plaintext,
+                senderPrivateKey: aliceKeyPair.privateKey,
+                recipientPublicKey: bobKeyPair.publicKey
+            )
+        }
     }
     
-    @Test("UTF-8 boundary cases", .disabled("NIP-44 padding issues with special UTF-8 characters"))
+    @Test("UTF-8 boundary cases")
     func testUTF8BoundaryCases() throws {
         let testCases = [
             "𝄞",  // Musical symbol (4 bytes)

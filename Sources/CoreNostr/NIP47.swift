@@ -226,7 +226,10 @@ public struct NWCConnectionURI: Sendable, Codable {
         }
         
         // The host is the wallet pubkey
-        self.walletPubkey = host
+        guard host.count == 64, host.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil else {
+            return nil
+        }
+        self.walletPubkey = host.lowercased()
         
         // Parse query parameters
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -241,8 +244,11 @@ public struct NWCConnectionURI: Sendable, Codable {
         for item in queryItems {
             switch item.name {
             case "relay":
-                if let value = item.value {
-                    relays.append(value)
+                if let value = item.value,
+                   let relayURL = URL(string: value),
+                   let scheme = relayURL.scheme,
+                   scheme == "wss" || scheme == "ws" {
+                    relays.append(relayURL.absoluteString)
                 }
             case "secret":
                 secret = item.value
@@ -256,12 +262,15 @@ public struct NWCConnectionURI: Sendable, Codable {
         // Validate required parameters
         guard !relays.isEmpty,
               let secret = secret,
-              secret.count == 64 else { // 32 bytes hex = 64 chars
+              secret.count == 64,
+              secret.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil else { // 32 bytes hex = 64 chars
             return nil
         }
         
-        self.relays = relays
-        self.secret = secret
+        // Deduplicate relays while preserving order
+        var seen: Set<String> = []
+        self.relays = relays.filter { seen.insert($0).inserted }
+        self.secret = secret.lowercased()
         self.lud16 = lud16
     }
     

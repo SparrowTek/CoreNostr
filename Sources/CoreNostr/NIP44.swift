@@ -64,7 +64,8 @@ public enum NIP44 {
     public static func encrypt(
         plaintext: String,
         senderPrivateKey: String,
-        recipientPublicKey: String
+        recipientPublicKey: String,
+        nonce overrideNonce: Data? = nil
     ) throws -> String {
         // Validate keys
         try Validation.validatePrivateKey(senderPrivateKey)
@@ -90,8 +91,11 @@ public enum NIP44 {
             throw error
         }
         
-        // Generate random nonce
-        let nonce = generateNonce()
+        // Generate nonce (allow deterministic override for testing)
+        if let overrideNonce, overrideNonce.count != 32 {
+            throw NIP44Error.invalidPayload
+        }
+        let nonce = overrideNonce ?? generateNonce()
         
         // Derive keys
         let encryptionKey: Data
@@ -401,5 +405,27 @@ public enum NIP44 {
         
         return paddedData[0..<unpaddedLen]
     }
-}
 
+    // MARK: - Test Helpers
+    
+    /// Internal helper for tests: derive shared secret for deterministic vector verification
+    internal static func testSharedSecret(
+        privateKey: String,
+        publicKey: String
+    ) throws -> Data {
+        try computeSharedSecret(privateKey: privateKey, publicKey: publicKey)
+    }
+    
+    /// Internal helper for tests: derive encryption/HMAC keys from shared secret and nonce
+    internal static func testDerivedKeys(
+        sharedSecret: Data,
+        nonce: Data
+    ) throws -> (Data, Data) {
+        try deriveKeys(sharedSecret: sharedSecret, nonce: nonce)
+    }
+    
+    /// Internal helper for tests: compute HMAC over payload
+    internal static func testComputeHMAC(payload: Data, key: Data) -> Data {
+        computeHMAC(payload: payload, key: key)
+    }
+}
