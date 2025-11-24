@@ -487,10 +487,16 @@ public extension NostrEvent {
             encryptedContent = try walletKeyPair.encrypt(message: jsonString, to: clientPubkey)
         }
         
-        let tags: [[String]] = [
+        var tags: [[String]] = [
             ["p", clientPubkey],
             ["e", requestId]
         ]
+        
+        if encryption == .nip44 {
+            tags.append(["encryption", NWCEncryption.nip44.rawValue])
+        } else {
+            tags.append(["encryption", NWCEncryption.nip04.rawValue])
+        }
         
         let event = NostrEvent(
             pubkey: walletPubkey,
