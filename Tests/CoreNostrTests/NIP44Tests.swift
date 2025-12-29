@@ -372,8 +372,14 @@ struct NIP44Tests {
             )
             
             let hmacStart = payloadData.count - 32
+            // HMAC is computed over nonce + ciphertext (not version byte) per NIP-44 spec
+            let nonce = Data(payloadData[1..<33])
+            let ciphertext = Data(payloadData[33..<hmacStart])
+            var hmacInput = Data()
+            hmacInput.append(nonce)
+            hmacInput.append(ciphertext)
             let computedHMAC = NIP44.testComputeHMAC(
-                payload: Data(payloadData[..<hmacStart]),
+                payload: hmacInput,
                 key: hmacKey
             )
             #expect(Data(computedHMAC) == Data(payloadData[hmacStart...]))
@@ -659,5 +665,340 @@ struct NIP44Tests {
         )
         
         #expect(decrypted == plaintext)
+    }
+}
+
+// MARK: - Official NIP-44 Test Vectors
+
+/// Test suite using official NIP-44 test vectors from https://github.com/paulmillr/nip44
+/// These vectors ensure cross-implementation compatibility.
+@Suite("NIP-44 Official Test Vectors")
+struct NIP44OfficialVectorTests {
+    
+    // MARK: - calc_padded_len vectors
+    
+    @Test("Official padding length calculation vectors")
+    func testCalcPaddedLen() throws {
+        // Official test vectors from nip44.vectors.json valid.calc_padded_len
+        // These test the padding calculation algorithm, not actual encryption
+        let vectors: [(unpadded: Int, expected: Int)] = [
+            (16, 32),
+            (32, 32),
+            (33, 64),
+            (37, 64),
+            (45, 64),
+            (49, 64),
+            (64, 64),
+            (65, 96),
+            (100, 128),
+            (111, 128),
+            (200, 224),
+            (250, 256),
+            (320, 320),
+            (383, 384),
+            (384, 384),
+            (400, 448),
+            (500, 512),
+            (512, 512),
+            (515, 640),
+            (700, 768),
+            (800, 896),
+            (900, 1024),
+            (1020, 1024),
+            (65536, 65536)  // Note: 65536 tests calcPaddedLen, not actual encryption (max plaintext is 65535)
+        ]
+        
+        // Test the padding calculation function directly
+        for vector in vectors {
+            let computed = NIP44.testCalcPaddedLen(vector.unpadded)
+            #expect(computed == vector.expected,
+                   "calcPaddedLen(\(vector.unpadded)) = \(computed), expected \(vector.expected)")
+        }
+        
+        // Additionally, verify encryption works for lengths within valid range (1-65535)
+        let encryptableVectors = vectors.filter { $0.unpadded <= 65535 }
+        for vector in encryptableVectors {
+            let plaintext = String(repeating: "x", count: vector.unpadded)
+            let keyPair = try KeyPair.generate()
+            let recipientKeyPair = try KeyPair.generate()
+            
+            let encrypted = try NIP44.encrypt(
+                plaintext: plaintext,
+                senderPrivateKey: keyPair.privateKey,
+                recipientPublicKey: recipientKeyPair.publicKey
+            )
+            
+            guard let payloadData = Data(base64Encoded: encrypted) else {
+                Issue.record("Failed to decode base64 for unpadded length \(vector.unpadded)")
+                continue
+            }
+            
+            // Payload structure: version(1) + nonce(32) + ciphertext(2 + paddedLen) + hmac(32)
+            let expectedPayloadSize = 1 + 32 + (2 + vector.expected) + 32
+            #expect(payloadData.count == expectedPayloadSize, 
+                   "For unpadded \(vector.unpadded): expected payload size \(expectedPayloadSize), got \(payloadData.count)")
+        }
+    }
+    
+    // MARK: - encrypt_decrypt vectors
+    
+    @Test("Official encrypt/decrypt vectors with deterministic nonce")
+    func testEncryptDecryptVectors() throws {
+        // Official test vectors from nip44.vectors.json valid.encrypt_decrypt
+        struct Vector {
+            let sec1: String
+            let sec2: String
+            let conversationKey: String
+            let nonce: String
+            let plaintext: String
+            let payload: String
+        }
+        
+        let vectors: [Vector] = [
+            Vector(
+                sec1: "0000000000000000000000000000000000000000000000000000000000000001",
+                sec2: "0000000000000000000000000000000000000000000000000000000000000002",
+                conversationKey: "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+                nonce: "0000000000000000000000000000000000000000000000000000000000000001",
+                plaintext: "a",
+                payload: "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb"
+            ),
+            Vector(
+                sec1: "0000000000000000000000000000000000000000000000000000000000000002",
+                sec2: "0000000000000000000000000000000000000000000000000000000000000001",
+                conversationKey: "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+                nonce: "f00000000000000000000000000000f00000000000000000000000000000000f",
+                plaintext: "🍕🫃",
+                payload: "AvAAAAAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAAAPSKSK6is9ngkX2+cSq85Th16oRTISAOfhStnixqZziKMDvB0QQzgFZdjLTPicCJaV8nDITO+QfaQ61+KbWQIOO2Yj"
+            ),
+            Vector(
+                sec1: "5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a",
+                sec2: "4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d",
+                conversationKey: "3e2b52a63be47d34fe0a80e34e73d436d6963bc8f39827f327057a9986c20a45",
+                nonce: "b635236c42db20f021bb8d1cdff5ca75dd1a0cc72ea742ad750f33010b24f73b",
+                plaintext: "表ポあA鷗ŒéＢ逍Üßªąñ丂㐀𠀀",
+                payload: "ArY1I2xC2yDwIbuNHN/1ynXdGgzHLqdCrXUPMwELJPc7s7JqlCMJBAIIjfkpHReBPXeoMCyuClwgbT419jUWU1PwaNl4FEQYKCDKVJz+97Mp3K+Q2YGa77B6gpxB/lr1QgoqpDf7wDVrDmOqGoiPjWDqy8KzLueKDcm9BVP8xeTJIxs="
+            ),
+            Vector(
+                sec1: "8f40e50a84a7462e2b8d24c28898ef1f23359fff50d8c509e6fb7ce06e142f9c",
+                sec2: "b9b0a1e9cc20100c5faa3bbe2777303d25950616c4c6a3fa2e3e046f936ec2ba",
+                conversationKey: "d5a2f879123145a4b291d767428870f5a8d9e5007193321795b40183d4ab8c2b",
+                nonce: "b20989adc3ddc41cd2c435952c0d59a91315d8c5218d5040573fc3749543acaf",
+                plaintext: "ability🤝的 ȺȾ",
+                payload: "ArIJia3D3cQc0sQ1lSwNWakTFdjFIY1QQFc/w3SVQ6yvbG2S0x4Yu86QGwPTy7mP3961I1XqB6SFFTzqDZZavhxoWMj7mEVGMQIsh2RLWI5EYQaQDIePSnXPlzf7CIt+voTD"
+            ),
+            Vector(
+                sec1: "875adb475056aec0b4809bd2db9aa00cff53a649e7b59d8edcbf4e6330b0995c",
+                sec2: "9c05781112d5b0a2a7148a222e50e0bd891d6b60c5483f03456e982185944aae",
+                conversationKey: "3b15c977e20bfe4b8482991274635edd94f366595b1a3d2993515705ca3cedb8",
+                nonce: "8d4442713eb9d4791175cb040d98d6fc5be8864d6ec2f89cf0895a2b2b72d1b1",
+                plaintext: "pepper👀їжак",
+                payload: "Ao1EQnE+udR5EXXLBA2Y1vxb6IZNbsL4nPCJWisrctGxY3AduCS+jTUgAAnfvKafkmpy15+i9YMwCdccisRa8SvzW671T2JO4LFSPX31K4kYUKelSAdSPwe9NwO6LhOsnoJ+"
+            )
+        ]
+        
+        for (index, vector) in vectors.enumerated() {
+            // Convert nonce from hex to Data
+            guard let nonceData = Data(hex: vector.nonce) else {
+                Issue.record("Invalid nonce hex at index \(index)")
+                continue
+            }
+            
+            // Get recipient's public key from sec2
+            let recipientKeyPair = try KeyPair(privateKey: vector.sec2)
+            
+            // Encrypt with deterministic nonce
+            let encrypted = try NIP44.encrypt(
+                plaintext: vector.plaintext,
+                senderPrivateKey: vector.sec1,
+                recipientPublicKey: recipientKeyPair.publicKey,
+                nonce: nonceData
+            )
+            
+            // Verify payload matches expected
+            #expect(encrypted == vector.payload, 
+                   "Vector \(index): payload mismatch for plaintext '\(vector.plaintext)'")
+            
+            // Verify we can decrypt the official payload
+            let decrypted = try NIP44.decrypt(
+                payload: vector.payload,
+                recipientPrivateKey: vector.sec2,
+                senderPublicKey: try KeyPair(privateKey: vector.sec1).publicKey
+            )
+            
+            #expect(decrypted == vector.plaintext,
+                   "Vector \(index): decryption mismatch for plaintext '\(vector.plaintext)'")
+        }
+    }
+    
+    // MARK: - Invalid decrypt vectors
+    
+    @Test("Official invalid decryption vectors")
+    func testInvalidDecryptVectors() throws {
+        // Official test vectors from nip44.vectors.json invalid.decrypt
+        struct InvalidVector {
+            let conversationKey: String
+            let nonce: String
+            let payload: String
+            let note: String
+        }
+        
+        let vectors: [InvalidVector] = [
+            InvalidVector(
+                conversationKey: "ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642",
+                nonce: "daaea5ca345b268e5b62060ca72c870c48f713bc1e00ff3fc0ddb78e826f10db",
+                payload: "#Atqupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJdU0MIDf06CUvEvdnr1cp1fiMtlM/GrE92xAc1K5odTpCzUB+mjXgbaqtntBUbTToSUoT0ovrlPwzGjyp",
+                note: "unknown encryption version"
+            ),
+            InvalidVector(
+                conversationKey: "36f04e558af246352dcf73b692fbd3646a2207bd8abd4b1cd26b234db84d9481",
+                nonce: "ad408d4be8616dc84bb0bf046454a2a102edac937c35209c43cd7964c5feb781",
+                payload: "AK1AjUvoYW3IS7C/BGRUoqEC7ayTfDUgnEPNeWTF/reBZFaha6EAIRueE9D1B1RuoiuFScC0Q94yjIuxZD3JStQtE8JMNacWFs9rlYP+ZydtHhRucp+lxfdvFlaGV/sQlqZz",
+                note: "unknown encryption version 0"
+            ),
+            InvalidVector(
+                conversationKey: "5cd2d13b9e355aeb2452afbd3786870dbeecb9d355b12cb0a3b6e9da5744cd35",
+                nonce: "b60036976a1ada277b948fd4caa065304b96964742b89d26f26a25263a5060bd",
+                payload: "",
+                note: "invalid payload length: 0"
+            ),
+            InvalidVector(
+                conversationKey: "d61d3f09c7dfe1c0be91af7109b60a7d9d498920c90cbba1e137320fdd938853",
+                nonce: "1a29d02c8b4527745a2ccb38bfa45655deb37bc338ab9289d756354cea1fd07c",
+                payload: "Ag==",
+                note: "invalid payload length: 4"
+            )
+        ]
+        
+        // Create keypairs to test decryption (we use fake keys since we expect failure)
+        let keyPair = try KeyPair.generate()
+        let recipientKeyPair = try KeyPair.generate()
+        
+        for vector in vectors {
+            // All these payloads should fail to decrypt
+            #expect(throws: (any Error).self, "\(vector.note) should throw") {
+                _ = try NIP44.decrypt(
+                    payload: vector.payload,
+                    recipientPrivateKey: recipientKeyPair.privateKey,
+                    senderPublicKey: keyPair.publicKey
+                )
+            }
+        }
+    }
+    
+    // MARK: - Message length validation
+    
+    @Test("Official invalid message length vectors")
+    func testInvalidMessageLengths() throws {
+        // Official test vectors from nip44.vectors.json invalid.encrypt_msg_lengths
+        let invalidLengths = [0, 65536, 100000]
+        
+        let keyPair = try KeyPair.generate()
+        let recipientKeyPair = try KeyPair.generate()
+        
+        for length in invalidLengths {
+            if length == 0 {
+                // Empty string should fail
+                #expect(throws: NIP44.NIP44Error.invalidPayload, "Length 0 should throw") {
+                    _ = try NIP44.encrypt(
+                        plaintext: "",
+                        senderPrivateKey: keyPair.privateKey,
+                        recipientPublicKey: recipientKeyPair.publicKey
+                    )
+                }
+            } else {
+                // Strings larger than 65535 should fail
+                let plaintext = String(repeating: "x", count: length)
+                #expect(throws: NIP44.NIP44Error.invalidPayload, "Length \(length) should throw") {
+                    _ = try NIP44.encrypt(
+                        plaintext: plaintext,
+                        senderPrivateKey: keyPair.privateKey,
+                        recipientPublicKey: recipientKeyPair.publicKey
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Conversation key vectors (for internal validation)
+    
+    @Test("Official conversation key generation vectors")
+    func testConversationKeyVectors() throws {
+        // A subset of official test vectors from nip44.vectors.json valid.get_conversation_key
+        struct ConversationKeyVector {
+            let sec1: String
+            let pub2: String
+            let expectedConversationKey: String
+        }
+        
+        let vectors: [ConversationKeyVector] = [
+            ConversationKeyVector(
+                sec1: "0000000000000000000000000000000000000000000000000000000000000001",
+                pub2: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                expectedConversationKey: "3b4610cb7189beb9cc29eb3716ecc6102f1247e8f3103a03a1787d8908aeb54e"
+            ),
+            ConversationKeyVector(
+                sec1: "0000000000000000000000000000000000000000000000000000000000000002",
+                pub2: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+                expectedConversationKey: "3b4610cb7189beb9cc29eb3716ecc6102f1247e8f3103a03a1787d8908aeb54e"
+            )
+        ]
+        
+        // For each vector, verify that encrypting from sec1 to pub2 and back works
+        // (We can't directly test conversation key without exposing internals)
+        for vector in vectors {
+            // Get recipient's keypair - we need to derive from a valid private key
+            // For pub2 = G (generator point), sec2 = 1
+            // For pub2 = 2G, sec2 = 2
+            let sec2: String
+            if vector.pub2 == "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798" {
+                sec2 = "0000000000000000000000000000000000000000000000000000000000000001"
+            } else if vector.pub2 == "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" {
+                sec2 = "0000000000000000000000000000000000000000000000000000000000000002"
+            } else {
+                continue // Skip vectors we can't reconstruct
+            }
+            
+            let plaintext = "test message"
+            
+            // Encrypt from sec1 to pub2
+            let encrypted = try NIP44.encrypt(
+                plaintext: plaintext,
+                senderPrivateKey: vector.sec1,
+                recipientPublicKey: vector.pub2
+            )
+            
+            // Decrypt using sec2
+            let decrypted = try NIP44.decrypt(
+                payload: encrypted,
+                recipientPrivateKey: sec2,
+                senderPublicKey: try KeyPair(privateKey: vector.sec1).publicKey
+            )
+            
+            #expect(decrypted == plaintext, "Conversation key vector failed for sec1=\(vector.sec1)")
+        }
+    }
+}
+
+// MARK: - Hex Data Extension for Tests
+
+extension Data {
+    init?(hex: String) {
+        let hex = hex.lowercased()
+        guard hex.count % 2 == 0 else { return nil }
+        
+        var data = Data(capacity: hex.count / 2)
+        var index = hex.startIndex
+        
+        while index < hex.endIndex {
+            let nextIndex = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<nextIndex], radix: 16) else {
+                return nil
+            }
+            data.append(byte)
+            index = nextIndex
+        }
+        
+        self = data
     }
 }

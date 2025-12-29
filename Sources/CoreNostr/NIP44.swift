@@ -125,14 +125,17 @@ public enum NIP44 {
             throw error
         }
         
-        // Create payload
+        // Compute HMAC over nonce + ciphertext (AAD = nonce per NIP-44 spec)
+        var hmacInput = Data()
+        hmacInput.append(nonce)
+        hmacInput.append(ciphertext)
+        let hmac = computeHMAC(payload: hmacInput, key: hmacKey)
+        
+        // Create final payload: version + nonce + ciphertext + hmac
         var payload = Data()
         payload.append(version)
         payload.append(nonce)
         payload.append(ciphertext)
-        
-        // Compute HMAC
-        let hmac = computeHMAC(payload: payload, key: hmacKey)
         payload.append(hmac)
         
         // Encode to base64
@@ -182,9 +185,11 @@ public enum NIP44 {
             sharedSecret: sharedSecret,
             nonce: Data(nonce)
         )
-        // Verify HMAC
-        let payloadWithoutHMAC = Data(payloadData[..<hmacStart])  // Convert SubSequence to Data
-        let computedHMAC = computeHMAC(payload: payloadWithoutHMAC, key: hmacKey)
+        // Verify HMAC over nonce + ciphertext (per NIP-44 spec, AAD = nonce)
+        var hmacInput = Data()
+        hmacInput.append(nonce)
+        hmacInput.append(ciphertext)
+        let computedHMAC = computeHMAC(payload: hmacInput, key: hmacKey)
         
         // Use constant-time comparison to prevent timing side-channels
         guard Data(computedHMAC).constantTimeEquals(Data(receivedHMAC)) else {
@@ -513,5 +518,10 @@ public enum NIP44 {
     /// Internal helper for tests: compute HMAC over payload
     internal static func testComputeHMAC(payload: Data, key: Data) -> Data {
         computeHMAC(payload: payload, key: key)
+    }
+    
+    /// Internal helper for tests: calculate padded length for a given unpadded length
+    internal static func testCalcPaddedLen(_ unpaddedLen: Int) -> Int {
+        calcPaddedLen(unpaddedLen)
     }
 }
