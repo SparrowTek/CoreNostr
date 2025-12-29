@@ -324,16 +324,19 @@ struct NIP44Tests {
             let conversationKey: String? // For verifying conversation key generation
         }
         
+        // Use valid secp256k1 keypairs for test vectors
+        // Private key 1 -> pubkey is the generator point G
+        // Private key 2 -> pubkey is 2*G
         let vectors = [
             TestVector(
                 senderPrivKey: "0000000000000000000000000000000000000000000000000000000000000001",
-                recipientPubKey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                recipientPubKey: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5", // pubkey for privkey 2
                 plaintext: "hello world",
                 conversationKey: nil
             ),
             TestVector(
-                senderPrivKey: "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb",
-                recipientPubKey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                senderPrivKey: "0000000000000000000000000000000000000000000000000000000000000002",
+                recipientPubKey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", // pubkey for privkey 1 (G)
                 plaintext: "NIP-44 test message",
                 conversationKey: nil
             )
@@ -363,7 +366,7 @@ struct NIP44Tests {
                 privateKey: vector.senderPrivKey,
                 publicKey: vector.recipientPubKey
             )
-            let (encryptionKey, hmacKey) = try NIP44.testDerivedKeys(
+            let (_, _, hmacKey) = try NIP44.testDerivedKeys(
                 sharedSecret: sharedSecret,
                 nonce: deterministicNonce
             )

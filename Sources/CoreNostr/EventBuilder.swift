@@ -51,6 +51,7 @@ public struct EventBuilder: Sendable {
     ///   - lud06: Lightning address (LNURL)
     ///   - lud16: Lightning address (email format)
     /// - Returns: An EventBuilder configured for metadata
+    /// - Throws: `NostrError.serializationError` if metadata cannot be encoded as JSON
     public static func metadata(
         name: String? = nil,
         about: String? = nil,
@@ -60,7 +61,7 @@ public struct EventBuilder: Sendable {
         website: String? = nil,
         lud06: String? = nil,
         lud16: String? = nil
-    ) -> EventBuilder {
+    ) throws -> EventBuilder {
         var metadata: [String: String] = [:]
         
         if let name = name { metadata["name"] = name }
@@ -72,7 +73,10 @@ public struct EventBuilder: Sendable {
         if let lud06 = lud06 { metadata["lud06"] = lud06 }
         if let lud16 = lud16 { metadata["lud16"] = lud16 }
         
-        let content = try! String(data: JSONSerialization.data(withJSONObject: metadata), encoding: .utf8)!
+        let jsonData = try JSONSerialization.data(withJSONObject: metadata)
+        guard let content = String(data: jsonData, encoding: .utf8) else {
+            throw NostrError.serializationError(type: "metadata", reason: "Failed to encode as UTF-8")
+        }
         return EventBuilder(kind: 0, content: content)
     }
     
@@ -164,7 +168,8 @@ public struct EventBuilder: Sendable {
     ///   - about: Channel description
     ///   - picture: Optional channel picture URL
     /// - Returns: An EventBuilder configured for channel creation
-    public static func channel(name: String, about: String, picture: String? = nil) -> EventBuilder {
+    /// - Throws: `NostrError.serializationError` if channel metadata cannot be encoded as JSON
+    public static func channel(name: String, about: String, picture: String? = nil) throws -> EventBuilder {
         var metadata: [String: String] = [
             "name": name,
             "about": about
@@ -173,7 +178,10 @@ public struct EventBuilder: Sendable {
             metadata["picture"] = picture
         }
         
-        let content = try! String(data: JSONSerialization.data(withJSONObject: metadata), encoding: .utf8)!
+        let jsonData = try JSONSerialization.data(withJSONObject: metadata)
+        guard let content = String(data: jsonData, encoding: .utf8) else {
+            throw NostrError.serializationError(type: "channel", reason: "Failed to encode as UTF-8")
+        }
         return EventBuilder(kind: 40, content: content)
     }
     

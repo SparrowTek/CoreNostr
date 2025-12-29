@@ -95,13 +95,14 @@ public enum NIP44 {
         if let overrideNonce, overrideNonce.count != 32 {
             throw NIP44Error.invalidPayload
         }
-        let nonce = overrideNonce ?? generateNonce()
+        let nonce = try overrideNonce ?? generateNonce()
         
-        // Derive keys
-        let encryptionKey: Data
+        // Derive keys (ChaCha key, ChaCha nonce, HMAC key)
+        let chachaKey: Data
+        let chachaNonce: Data
         let hmacKey: Data
         do {
-            (encryptionKey, hmacKey) = try deriveKeys(
+            (chachaKey, chachaNonce, hmacKey) = try deriveKeys(
                 sharedSecret: sharedSecret,
                 nonce: nonce
             )
@@ -112,13 +113,13 @@ public enum NIP44 {
         // Pad plaintext
         let paddedPlaintext = pad(plaintextData)
         
-        // Encrypt
+        // Encrypt using derived ChaCha key and nonce
         let ciphertext: Data
         do {
             ciphertext = try encryptChaCha20(
                 plaintext: paddedPlaintext,
-                key: encryptionKey,
-                nonce: nonce
+                key: chachaKey,
+                nonce: chachaNonce
             )
         } catch {
             throw error
@@ -176,10 +177,10 @@ public enum NIP44 {
             privateKey: recipientPrivateKey,
             publicKey: senderPublicKey
         )
-        // Derive keys
-        let (encryptionKey, hmacKey) = try deriveKeys(
+        // Derive keys (ChaCha key, ChaCha nonce, HMAC key)
+        let (chachaKey, chachaNonce, hmacKey) = try deriveKeys(
             sharedSecret: sharedSecret,
-            nonce: nonce
+            nonce: Data(nonce)
         )
         // Verify HMAC
         let payloadWithoutHMAC = Data(payloadData[..<hmacStart])  // Convert SubSequence to Data
@@ -190,11 +191,11 @@ public enum NIP44 {
             throw NIP44Error.hmacVerificationFailed
         }
         
-        // Decrypt
+        // Decrypt using derived ChaCha key and nonce
         let paddedPlaintext = try decryptChaCha20(
             ciphertext: Data(ciphertext),  // Convert SubSequence to Data
-            key: encryptionKey,
-            nonce: Data(nonce)  // Convert SubSequence to Data
+            key: chachaKey,
+            nonce: chachaNonce
         )
         // Unpad
         let plaintext = try unpad(paddedPlaintext)
@@ -263,25 +264,35 @@ public enum NIP44 {
         }
     }
     
-    /// Generate a random 32-byte nonce
-    private static func generateNonce() -> Data {
+    /// Generate a random 32-byte nonce using the system CSPRNG.
+    ///
+    /// - Throws: `NIP44Error.encryptionFailed` if secure random generation fails.
+    ///
+    /// - Important: This function throws on failure rather than falling back to
+    ///   predictable values. Using a zero or predictable nonce would be catastrophic
+    ///   for encryption security.
+    private static func generateNonce() throws -> Data {
         var nonce = Data(count: 32)
         let result = nonce.withUnsafeMutableBytes { bytes in
             SecRandomCopyBytes(kSecRandomDefault, 32, bytes.baseAddress!)
         }
         guard result == errSecSuccess else {
-            // If random generation fails, use a fallback
-            // This should never happen in practice
-            return Data(repeating: 0, count: 32)
+            // Never fall back to predictable nonces - this would be a security catastrophe
+            throw NIP44Error.encryptionFailed
         }
         return nonce
     }
     
-    /// Derive encryption and HMAC keys from shared secret and nonce
+    /// Derive message keys from shared secret and nonce.
+    ///
+    /// Per NIP-44 spec:
+    /// 1. Derive conversation key: `HKDF-extract(IKM=shared_x, salt="nip44-v2")`
+    /// 2. Derive message keys: `HKDF-expand(PRK=conversation_key, info=nonce, L=76)`
+    /// 3. Split: `chacha_key[0:32], chacha_nonce[32:44], hmac_key[44:76]`
     private static func deriveKeys(
         sharedSecret: Data,
         nonce: Data
-    ) throws -> (encryptionKey: Data, hmacKey: Data) {
+    ) throws -> (chachaKey: Data, chachaNonce: Data, hmacKey: Data) {
         // Step 1: Derive conversation key using HKDF-extract
         // salt = "nip44-v2", IKM = shared_x (32 bytes)
         let salt = "nip44-v2".data(using: .utf8)!
@@ -305,42 +316,55 @@ public enum NIP44 {
         
         // Slice the output according to spec:
         // chacha_key: bytes 0..32
-        // chacha_nonce: bytes 32..44 (not used in our case)
+        // chacha_nonce: bytes 32..44
         // hmac_key: bytes 44..76
-        let encryptionKey = Data(keyData[0..<32])
+        let chachaKey = Data(keyData[0..<32])
+        let chachaNonce = Data(keyData[32..<44])
         let hmacKey = Data(keyData[44..<76])
         
-        return (encryptionKey, hmacKey)
+        return (chachaKey, chachaNonce, hmacKey)
     }
     
-    /// Encrypt using ChaCha20
+    /// Encrypt using ChaCha20.
+    ///
+    /// - Parameters:
+    ///   - plaintext: The padded plaintext to encrypt
+    ///   - key: 32-byte ChaCha20 key (derived from HKDF)
+    ///   - nonce: 12-byte ChaCha20 nonce (derived from HKDF, bytes 32..44)
     private static func encryptChaCha20(
         plaintext: Data,
         key: Data,
         nonce: Data
     ) throws -> Data {
-        // ChaCha20 uses a 12-byte nonce, we use first 12 bytes of our 32-byte nonce
-        let chachaNonce = Data(nonce[0..<12])
+        guard nonce.count == 12 else {
+            throw NIP44Error.encryptionFailed
+        }
         
         do {
-            let chacha = try ChaCha20(key: key, nonce: chachaNonce)
+            let chacha = try ChaCha20(key: key, nonce: nonce)
             return chacha.process(plaintext)
         } catch {
             throw NIP44Error.encryptionFailed
         }
     }
     
-    /// Decrypt using ChaCha20
+    /// Decrypt using ChaCha20.
+    ///
+    /// - Parameters:
+    ///   - ciphertext: The ciphertext to decrypt
+    ///   - key: 32-byte ChaCha20 key (derived from HKDF)
+    ///   - nonce: 12-byte ChaCha20 nonce (derived from HKDF, bytes 32..44)
     private static func decryptChaCha20(
         ciphertext: Data,
         key: Data,
         nonce: Data
     ) throws -> Data {
-        // ChaCha20 uses a 12-byte nonce
-        let chachaNonce = Data(nonce[0..<12])
+        guard nonce.count == 12 else {
+            throw NIP44Error.decryptionFailed
+        }
         
         do {
-            let chacha = try ChaCha20(key: key, nonce: chachaNonce)
+            let chacha = try ChaCha20(key: key, nonce: nonce)
             return chacha.process(ciphertext)
         } catch {
             throw NIP44Error.decryptionFailed
@@ -356,54 +380,115 @@ public enum NIP44 {
         return Data(mac)
     }
     
-    /// Pad plaintext according to NIP-44 specification
-    private static func pad(_ plaintext: Data) -> Data {
-        let unpaddedLen = plaintext.count
-        
-        var chunked = 32
+    /// Calculate the padded length for a given unpadded length per NIP-44 spec.
+    ///
+    /// The algorithm ensures padding grows in powers of two, with a minimum of 32 bytes.
+    /// This provides consistent padding that partially obscures message length.
+    ///
+    /// From NIP-44 spec:
+    /// ```
+    /// def calc_padded_len(unpadded_len):
+    ///   next_power = 1 << (floor(log2(unpadded_len - 1))) + 1
+    ///   if next_power <= 256:
+    ///     chunk = 32
+    ///   else:
+    ///     chunk = next_power / 8
+    ///   if unpadded_len <= 32:
+    ///     return 32
+    ///   else:
+    ///     return chunk * (floor((unpadded_len - 1) / chunk) + 1)
+    /// ```
+    private static func calcPaddedLen(_ unpaddedLen: Int) -> Int {
+        // Messages up to 32 bytes always pad to 32
         if unpaddedLen <= 32 {
-            chunked = 32
-        } else if unpaddedLen <= 96 {
-            chunked = 96
-        } else if unpaddedLen <= 224 {
-            chunked = 224
-        } else if unpaddedLen <= 480 {
-            chunked = 480
-        } else if unpaddedLen <= 992 {
-            chunked = 992
-        } else if unpaddedLen <= 2016 {
-            chunked = 2016
-        } else if unpaddedLen <= 4064 {
-            chunked = 4064
-        } else if unpaddedLen <= 8160 {
-            chunked = 8160
-        } else if unpaddedLen <= 16352 {
-            chunked = 16352
-        } else if unpaddedLen <= 32736 {
-            chunked = 32736
-        } else {
-            chunked = 65536
+            return 32
         }
         
-        let padded = chunked - unpaddedLen
-        var result = plaintext
-        result.append(Data(repeating: 0, count: padded))
+        // Calculate next power of 2 greater than (unpaddedLen - 1)
+        // floor(log2(unpaddedLen - 1)) + 1 gives us the exponent for next power
+        let nextPower = 1 << (Int(floor(log2(Double(unpaddedLen - 1)))) + 1)
+        
+        // Chunk size is 32 for small messages, otherwise nextPower / 8
+        let chunk: Int
+        if nextPower <= 256 {
+            chunk = 32
+        } else {
+            chunk = nextPower / 8
+        }
+        
+        // Round up to next chunk boundary
+        return chunk * (((unpaddedLen - 1) / chunk) + 1)
+    }
+    
+    /// Pad plaintext according to NIP-44 specification.
+    ///
+    /// Padding format: `[plaintext_length: u16 BE][plaintext][zero_bytes]`
+    ///
+    /// The 2-byte big-endian length prefix allows precise extraction during unpadding,
+    /// even if the plaintext contains trailing zero bytes.
+    private static func pad(_ plaintext: Data) -> Data {
+        let unpaddedLen = plaintext.count
+        let paddedLen = calcPaddedLen(unpaddedLen)
+        
+        // Build padded message: [2-byte BE length][plaintext][zeros]
+        var result = Data(capacity: 2 + paddedLen)
+        
+        // Write plaintext length as 2-byte big-endian
+        result.append(UInt8((unpaddedLen >> 8) & 0xFF))
+        result.append(UInt8(unpaddedLen & 0xFF))
+        
+        // Append plaintext
+        result.append(plaintext)
+        
+        // Append zero padding to reach paddedLen total (after the 2-byte prefix)
+        let zeroCount = paddedLen - unpaddedLen
+        if zeroCount > 0 {
+            result.append(Data(repeating: 0, count: zeroCount))
+        }
+        
         return result
     }
     
-    /// Unpad plaintext
+    /// Unpad plaintext according to NIP-44 specification.
+    ///
+    /// Reads the 2-byte big-endian length prefix and extracts exactly that many bytes.
+    /// Validates that the padding is correct per the spec.
     private static func unpad(_ paddedData: Data) throws -> Data {
-        // Find the last non-zero byte
-        var unpaddedLen = paddedData.count
-        while unpaddedLen > 0 && unpaddedLen - 1 < paddedData.count && paddedData[unpaddedLen - 1] == 0 {
-            unpaddedLen -= 1
-        }
-        
-        guard unpaddedLen >= minPlaintextSize else {
+        // Need at least 2 bytes for length prefix + 1 byte minimum plaintext
+        guard paddedData.count >= 3 else {
             throw NIP44Error.invalidPadding
         }
         
-        return paddedData[0..<unpaddedLen]
+        // Read 2-byte big-endian length prefix
+        let unpaddedLen = (Int(paddedData[0]) << 8) | Int(paddedData[1])
+        
+        // Validate length is within allowed range
+        guard unpaddedLen >= minPlaintextSize && unpaddedLen <= maxPlaintextSize else {
+            throw NIP44Error.invalidPadding
+        }
+        
+        // Validate we have enough data
+        guard paddedData.count >= 2 + unpaddedLen else {
+            throw NIP44Error.invalidPadding
+        }
+        
+        // Extract plaintext (bytes after 2-byte prefix)
+        let plaintext = Data(paddedData[2..<(2 + unpaddedLen)])
+        
+        // Verify padding length matches expected calculation
+        let expectedPaddedLen = calcPaddedLen(unpaddedLen)
+        guard paddedData.count == 2 + expectedPaddedLen else {
+            throw NIP44Error.invalidPadding
+        }
+        
+        // Verify all padding bytes are zero (constant-time would be better but this is post-MAC)
+        for i in (2 + unpaddedLen)..<paddedData.count {
+            guard paddedData[i] == 0 else {
+                throw NIP44Error.invalidPadding
+            }
+        }
+        
+        return plaintext
     }
 
     // MARK: - Test Helpers
@@ -416,11 +501,12 @@ public enum NIP44 {
         try computeSharedSecret(privateKey: privateKey, publicKey: publicKey)
     }
     
-    /// Internal helper for tests: derive encryption/HMAC keys from shared secret and nonce
+    /// Internal helper for tests: derive message keys from shared secret and nonce
+    /// Returns: (chachaKey, chachaNonce, hmacKey)
     internal static func testDerivedKeys(
         sharedSecret: Data,
         nonce: Data
-    ) throws -> (Data, Data) {
+    ) throws -> (chachaKey: Data, chachaNonce: Data, hmacKey: Data) {
         try deriveKeys(sharedSecret: sharedSecret, nonce: nonce)
     }
     

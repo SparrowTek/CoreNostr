@@ -288,8 +288,19 @@ extension NostrNIP05Identifier: CustomStringConvertible {
 }
 
 extension NostrNIP05Identifier: ExpressibleByStringLiteral {
+    /// Creates a NIP-05 identifier from a string literal.
+    ///
+    /// - Important: This initializer is intended for compile-time string literals only.
+    ///   Invalid identifiers will cause a fatal error. For runtime string parsing,
+    ///   use `init(identifier:)` which throws on invalid input.
+    ///
+    /// - Parameter value: A valid NIP-05 identifier string (e.g., "user@example.com")
     public init(stringLiteral value: String) {
-        try! self.init(identifier: value)
+        do {
+            try self.init(identifier: value)
+        } catch {
+            fatalError("Invalid NIP-05 identifier literal '\(value)': \(error.localizedDescription). Use init(identifier:) for runtime parsing.")
+        }
     }
 }
 
