@@ -378,22 +378,30 @@ struct FuzzTests {
         ]
         
         for input in fuzzInputs {
-            // Test hex validation - our Data(hex:) accepts empty strings and returns empty Data
+            // Data(hex:) strips spaces before parsing, so we validate the same way
             let cleanInput = input.replacingOccurrences(of: " ", with: "")
-            let isValidHex = cleanInput.count % 2 == 0 && cleanInput.allSatisfy({ $0.isHexDigit })
+            
+            // After stripping spaces, it's valid hex if:
+            // 1. Even length (including 0)
+            // 2. All characters are hex digits (0-9, a-f, A-F)
+            let isValidHex = cleanInput.count % 2 == 0 && 
+                             cleanInput.allSatisfy({ $0.isHexDigit })
             
             if isValidHex {
-                // Valid hex should work with our Data(hex:) initializer
+                // Valid hex (after space stripping) should work
                 if let data = Data(hex: input) {
-                    #expect(data.count == cleanInput.count / 2)
+                    #expect(data.count == cleanInput.count / 2,
+                           "Expected \(cleanInput.count / 2) bytes for input '\(input)'")
                 } else {
-                    // Data(hex:) returned nil for what we thought was valid hex
-                    Issue.record("Data(hex:) returned nil for supposedly valid hex: \(input)")
+                    // Only record issue if cleanInput is non-empty (empty string gives empty Data)
+                    if !cleanInput.isEmpty {
+                        Issue.record("Data(hex:) returned nil for supposedly valid hex: '\(input)'")
+                    }
                 }
             } else {
                 // Invalid hex - verify Data(hex:) returns nil
                 let data = Data(hex: input)
-                #expect(data == nil)
+                #expect(data == nil, "Expected nil for invalid hex: '\(input)'")
             }
         }
     }
