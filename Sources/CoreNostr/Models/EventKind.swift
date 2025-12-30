@@ -113,6 +113,11 @@ public enum EventKind: Int, CaseIterable, Sendable, Codable {
     /// Client authentication (NIP-42)
     case clientAuthentication = 22242
     
+    // MARK: - NIP-46 Nostr Remote Signing
+    
+    /// Remote signing request/response (NIP-46)
+    case remoteSigningRequest = 24133
+    
     // MARK: - NIP-47 Nostr Wallet Connect
     
     /// Wallet service info event (NIP-47)
@@ -165,6 +170,7 @@ public enum EventKind: Int, CaseIterable, Sendable, Codable {
         case .longFormContent: return "Long-form Content"
         case .longFormDraft: return "Long-form Draft"
         case .clientAuthentication: return "Client Authentication"
+        case .remoteSigningRequest: return "Remote Signing Request"
         case .nwcInfo: return "NWC Info"
         case .nwcRequest: return "NWC Request"
         case .nwcResponse: return "NWC Response"
