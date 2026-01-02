@@ -569,8 +569,6 @@ public extension NostrEvent {
         let encryptionTag = tags.first { $0.count >= 2 && $0[0] == "encryption" }
         let tagValue = encryptionTag.flatMap { $0.count >= 2 ? $0[1] : nil }
 
-        print("[NWC] decryptNWCContent: kind=\(kind), encryptionTag=\(tagValue ?? "none"), contentPrefix=\(content.prefix(50))")
-
         // Determine if NIP-44 based on multiple heuristics
         let isNIP44ByKind = kind == EventKind.nwcNotification.rawValue
         let isNIP44ByTag = tagValue?.lowercased().contains("nip44") == true
@@ -593,8 +591,6 @@ public extension NostrEvent {
             // No tag or unknown tag - use content-based detection
             isNIP44 = !isNIP04ByContent
         }
-
-        print("[NWC] decryptNWCContent: using \(isNIP44 ? "NIP-44" : "NIP-04") decryption")
 
         if isNIP44 {
             return try NIP44.decrypt(
