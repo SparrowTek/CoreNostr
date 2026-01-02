@@ -562,9 +562,40 @@ public extension NostrEvent {
     /// Decrypt NWC event content
     func decryptNWCContent(with privateKey: String, peerPubkey: String) throws -> String {
         // Check if this is NIP-44 or NIP-04 encrypted
-        let isNIP44 = kind == EventKind.nwcNotification.rawValue ||
-                      tags.contains { $0.count >= 2 && $0[0] == "encryption" && $0[1] == NWCEncryption.nip44.rawValue }
-        
+        // 1. Check for notification kind (always NIP-44)
+        // 2. Check for encryption tag with various NIP-44 values (nip44, nip44_v2)
+        // 3. Fall back to content format detection: NIP-04 uses "base64?iv=base64", NIP-44 is just base64
+
+        let encryptionTag = tags.first { $0.count >= 2 && $0[0] == "encryption" }
+        let tagValue = encryptionTag.flatMap { $0.count >= 2 ? $0[1] : nil }
+
+        print("[NWC] decryptNWCContent: kind=\(kind), encryptionTag=\(tagValue ?? "none"), contentPrefix=\(content.prefix(50))")
+
+        // Determine if NIP-44 based on multiple heuristics
+        let isNIP44ByKind = kind == EventKind.nwcNotification.rawValue
+        let isNIP44ByTag = tagValue?.lowercased().contains("nip44") == true
+        let isNIP04ByTag = tagValue?.lowercased() == "nip04"
+
+        // Content-based detection: NIP-04 always has "?iv=" separator
+        let isNIP04ByContent = content.contains("?iv=")
+
+        // Decision logic:
+        // - If tag explicitly says nip04, use NIP-04
+        // - If tag says nip44 (any variant), use NIP-44
+        // - If notification kind, use NIP-44
+        // - Otherwise, check content format
+        let isNIP44: Bool
+        if isNIP04ByTag {
+            isNIP44 = false
+        } else if isNIP44ByTag || isNIP44ByKind {
+            isNIP44 = true
+        } else {
+            // No tag or unknown tag - use content-based detection
+            isNIP44 = !isNIP04ByContent
+        }
+
+        print("[NWC] decryptNWCContent: using \(isNIP44 ? "NIP-44" : "NIP-04") decryption")
+
         if isNIP44 {
             return try NIP44.decrypt(
                 payload: content,
