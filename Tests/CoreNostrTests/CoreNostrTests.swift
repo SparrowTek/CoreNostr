@@ -2,6 +2,9 @@ import Testing
 import Foundation
 @testable import CoreNostr
 
+@Suite("CoreNostr Tests", .serialized)
+struct CoreNostrTestSuite {
+
 // MARK: - Crypto Tests
 @Test func keyPairGeneration() async throws {
     let keyPair = try KeyPair.generate()
@@ -1342,3 +1345,5 @@ import Foundation
         #expect(error is NostrError)
     }
 }
+
+} // end CoreNostrTestSuite

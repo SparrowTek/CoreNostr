@@ -3,7 +3,7 @@ import Foundation
 import P256K
 @testable import CoreNostr
 
-@Suite("Platform Compatibility: P256K and Cross-Platform Support")
+@Suite("Platform Compatibility: P256K and Cross-Platform Support", .serialized)
 struct PlatformCompatibilityTests {
     
     // MARK: - P256K Basic Operations

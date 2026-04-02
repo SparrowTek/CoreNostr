@@ -10,7 +10,7 @@ import Testing
 import Foundation
 
 /// Tests for NIP-17 Private Direct Messages
-@Suite("NIP-17: Private Direct Messages Tests")
+@Suite("NIP-17: Private Direct Messages Tests", .serialized)
 struct NIP17Tests {
     let aliceKeyPair: KeyPair
     let bobKeyPair: KeyPair

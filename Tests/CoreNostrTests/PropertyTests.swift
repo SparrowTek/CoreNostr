@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import CoreNostr
 
-@Suite("Property-Based Tests: Invariants and Round-trips")
+@Suite("Property-Based Tests: Invariants and Round-trips", .serialized)
 struct PropertyTests {
     
     // MARK: - Test Utilities

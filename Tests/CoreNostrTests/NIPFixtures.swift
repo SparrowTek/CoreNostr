@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import CoreNostr
 
-@Suite("NIP-Specific Fixtures: Real-world test vectors")
+@Suite("NIP-Specific Fixtures: Real-world test vectors", .serialized)
 struct NIPFixtures {
     
     // MARK: - NIP-04 Legacy Direct Messages

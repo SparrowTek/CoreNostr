@@ -2,7 +2,7 @@ import Testing
 @testable import CoreNostr
 import Foundation
 
-@Suite("NIP-13: Proof of Work Tests")
+@Suite("NIP-13: Proof of Work Tests", .serialized)
 struct NIP13Tests {
     
     let keyPair: KeyPair
@@ -169,12 +169,12 @@ struct NIP13Tests {
             content: "Timeout test"
         )
         
-        // Try to mine with very high difficulty and short timeout
+        // Try to mine with high difficulty and very short timeout
         do {
             _ = try await ProofOfWork.mine(
                 event: event,
-                targetDifficulty: 8,  // Lower difficulty
-                timeout: 1.0  // 1 second timeout
+                targetDifficulty: 32,  // High difficulty
+                timeout: 0.001  // 1ms timeout — guaranteed to expire
             )
             Issue.record("Should have timed out")
         } catch ProofOfWork.PoWError.miningTimeout {

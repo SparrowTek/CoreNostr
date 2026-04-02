@@ -10,7 +10,7 @@ import Testing
 import Foundation
 
 /// Tests for NIP-44 Encrypted Payloads
-@Suite("NIP-44: Encrypted Payloads Tests")
+@Suite("NIP-44: Encrypted Payloads Tests", .serialized)
 struct NIP44Tests {
     let aliceKeyPair: KeyPair
     let bobKeyPair: KeyPair
@@ -672,7 +672,7 @@ struct NIP44Tests {
 
 /// Test suite using official NIP-44 test vectors from https://github.com/paulmillr/nip44
 /// These vectors ensure cross-implementation compatibility.
-@Suite("NIP-44 Official Test Vectors")
+@Suite("NIP-44 Official Test Vectors", .serialized)
 struct NIP44OfficialVectorTests {
     
     // MARK: - calc_padded_len vectors
