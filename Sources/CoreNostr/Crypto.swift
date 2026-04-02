@@ -72,7 +72,8 @@ public struct KeyPair: Sendable, Codable {
         }
         
         let p256kPrivateKey = try P256K.Schnorr.PrivateKey(dataRepresentation: privateKeyData)
-        let signature = try p256kPrivateKey.signature(for: data)
+        let digest = SHA256.hash(data: data)
+        let signature = try p256kPrivateKey.signature(for: digest)
         return signature.dataRepresentation.hex
     }
     
@@ -108,7 +109,8 @@ public struct KeyPair: Sendable, Codable {
         let p256kPublicKey = P256K.Schnorr.XonlyKey(dataRepresentation: publicKeyData)
         let schnorrSignature = try P256K.Schnorr.SchnorrSignature(dataRepresentation: signatureData)
         
-        return p256kPublicKey.isValidSignature(schnorrSignature, for: data)
+        let digest = SHA256.hash(data: data)
+        return p256kPublicKey.isValidSignature(schnorrSignature, for: digest)
     }
     
     /// Verifies a NOSTR event's signature and ID.
