@@ -25,18 +25,64 @@ public enum NWCMethod: String, CaseIterable, Codable, Sendable {
 // MARK: - Error Codes
 
 /// Standard error codes defined by NIP-47
-public enum NWCErrorCode: String, Codable, Sendable {
-    case rateLimited = "RATE_LIMITED"
-    case notImplemented = "NOT_IMPLEMENTED"
-    case insufficientBalance = "INSUFFICIENT_BALANCE"
-    case quotaExceeded = "QUOTA_EXCEEDED"
-    case restricted = "RESTRICTED"
-    case unauthorized = "UNAUTHORIZED"
-    case internalError = "INTERNAL"
-    case unsupportedEncryption = "UNSUPPORTED_ENCRYPTION"
-    case paymentFailed = "PAYMENT_FAILED"
-    case notFound = "NOT_FOUND"
-    case other = "OTHER"
+public enum NWCErrorCode: Codable, Sendable, Hashable {
+    case rateLimited
+    case notImplemented
+    case insufficientBalance
+    case quotaExceeded
+    case restricted
+    case unauthorized
+    case internalError
+    case unsupportedEncryption
+    case paymentFailed
+    case notFound
+    case other
+    case unknown(String)
+
+    public var rawValue: String {
+        switch self {
+        case .rateLimited: return "RATE_LIMITED"
+        case .notImplemented: return "NOT_IMPLEMENTED"
+        case .insufficientBalance: return "INSUFFICIENT_BALANCE"
+        case .quotaExceeded: return "QUOTA_EXCEEDED"
+        case .restricted: return "RESTRICTED"
+        case .unauthorized: return "UNAUTHORIZED"
+        case .internalError: return "INTERNAL"
+        case .unsupportedEncryption: return "UNSUPPORTED_ENCRYPTION"
+        case .paymentFailed: return "PAYMENT_FAILED"
+        case .notFound: return "NOT_FOUND"
+        case .other: return "OTHER"
+        case .unknown(let value): return value
+        }
+    }
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "RATE_LIMITED": self = .rateLimited
+        case "NOT_IMPLEMENTED": self = .notImplemented
+        case "INSUFFICIENT_BALANCE": self = .insufficientBalance
+        case "QUOTA_EXCEEDED": self = .quotaExceeded
+        case "RESTRICTED": self = .restricted
+        case "UNAUTHORIZED": self = .unauthorized
+        case "INTERNAL": self = .internalError
+        case "UNSUPPORTED_ENCRYPTION": self = .unsupportedEncryption
+        case "PAYMENT_FAILED": self = .paymentFailed
+        case "NOT_FOUND": self = .notFound
+        case "OTHER": self = .other
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = NWCErrorCode(rawValue: raw) ?? .unknown(raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Error structure for NWC responses
@@ -73,17 +119,77 @@ public enum NWCEncryption: String, Codable, Sendable {
 // MARK: - Transaction Types
 
 /// Transaction type (incoming/outgoing)
-public enum NWCTransactionType: String, Codable, Sendable {
+public enum NWCTransactionType: Codable, Sendable, Hashable {
     case incoming
     case outgoing
+    case unknown(String)
+
+    public var rawValue: String {
+        switch self {
+        case .incoming: return "incoming"
+        case .outgoing: return "outgoing"
+        case .unknown(let value): return value
+        }
+    }
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "incoming": self = .incoming
+        case "outgoing": self = .outgoing
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = NWCTransactionType(rawValue: raw) ?? .unknown(raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Transaction state
-public enum NWCTransactionState: String, Codable, Sendable {
+public enum NWCTransactionState: Codable, Sendable, Hashable {
     case pending
     case settled
     case expired
     case failed
+    case unknown(String)
+
+    public var rawValue: String {
+        switch self {
+        case .pending: return "pending"
+        case .settled: return "settled"
+        case .expired: return "expired"
+        case .failed: return "failed"
+        case .unknown(let value): return value
+        }
+    }
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "pending": self = .pending
+        case "settled": self = .settled
+        case "expired": self = .expired
+        case "failed": self = .failed
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = NWCTransactionState(rawValue: raw) ?? .unknown(raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 // MARK: - Request/Response Models
@@ -144,7 +250,7 @@ public struct NWCTransaction: Codable {
     public let description: String?
     public let descriptionHash: String?
     public let preimage: String?
-    public let paymentHash: String
+    public let paymentHash: String?
     public let amount: Int64 // millisats
     public let feesPaid: Int64?
     public let createdAt: TimeInterval
@@ -159,7 +265,7 @@ public struct NWCTransaction: Codable {
         description: String? = nil,
         descriptionHash: String? = nil,
         preimage: String? = nil,
-        paymentHash: String,
+        paymentHash: String? = nil,
         amount: Int64,
         feesPaid: Int64? = nil,
         createdAt: TimeInterval,
