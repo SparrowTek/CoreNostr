@@ -463,7 +463,12 @@ public enum NIP44 {
     }
 
     // MARK: - Test Helpers
-    
+    //
+    // Gated behind `#if DEBUG` so they never ship in release builds. Tests run
+    // in debug mode; downstream consumers that use release builds of CoreNostr
+    // won't see these symbols in their module interface.
+
+    #if DEBUG
     /// Internal helper for tests: derive shared secret for deterministic vector verification
     internal static func testSharedSecret(
         privateKey: String,
@@ -471,7 +476,7 @@ public enum NIP44 {
     ) throws -> Data {
         try computeSharedSecret(privateKey: privateKey, publicKey: publicKey)
     }
-    
+
     /// Internal helper for tests: derive message keys from shared secret and nonce
     /// Returns: (chachaKey, chachaNonce, hmacKey)
     internal static func testDerivedKeys(
@@ -480,14 +485,15 @@ public enum NIP44 {
     ) throws -> (chachaKey: Data, chachaNonce: Data, hmacKey: Data) {
         try deriveKeys(sharedSecret: sharedSecret, nonce: nonce)
     }
-    
+
     /// Internal helper for tests: compute HMAC over payload
     internal static func testComputeHMAC(payload: Data, key: Data) -> Data {
         computeHMAC(payload: payload, key: key)
     }
-    
+
     /// Internal helper for tests: calculate padded length for a given unpadded length
     internal static func testCalcPaddedLen(_ unpaddedLen: Int) -> Int {
         calcPaddedLen(unpaddedLen)
     }
+    #endif
 }

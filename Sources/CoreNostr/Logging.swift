@@ -11,12 +11,17 @@ public enum NostrLogLevel: Int, Sendable {
     case none = 4
 }
 
-@MainActor
+/// The logger intentionally isn't isolated to any actor — logging happens
+/// everywhere, including off-main network code, and hopping to MainActor for
+/// every log call is a non-trivial latency cost. The configuration vars are
+/// `nonisolated(unsafe)` under the convention that callers configure them
+/// once at app startup (on main) and then only read from them; the underlying
+/// `os.Logger` is thread-safe for concurrent reads.
 public enum NostrLogger {
-    public static var level: NostrLogLevel = .warn
-    public static var isEnabled: Bool = true
-    public static var subsystem: String = "dev.sparrowtek.corenostr"
-    public static var category: String = "CoreNostr"
+    nonisolated(unsafe) public static var level: NostrLogLevel = .warn
+    nonisolated(unsafe) public static var isEnabled: Bool = true
+    nonisolated(unsafe) public static var subsystem: String = "dev.sparrowtek.corenostr"
+    nonisolated(unsafe) public static var category: String = "CoreNostr"
 
     public static func setLevel(_ newLevel: NostrLogLevel) { level = newLevel }
 

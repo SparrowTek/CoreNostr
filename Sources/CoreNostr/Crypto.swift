@@ -234,10 +234,22 @@ extension Data {
     }
     
     /// Converts Data to a hexadecimal string representation.
-    /// 
+    ///
     /// - Returns: Lowercase hexadecimal string
     public var hex: String {
-        return self.map { String(format: "%02x", $0) }.joined()
+        // Hot path (every event id, pubkey, signature). Per-byte String(format:)
+        // allocates a temporary per byte; a single-pass table lookup into a
+        // preallocated byte buffer is ~5-10× faster.
+        let table: [UInt8] = [
+            0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+            0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66
+        ] // "0123456789abcdef"
+        var out = [UInt8](repeating: 0, count: count * 2)
+        for (i, byte) in enumerated() {
+            out[i &* 2]     = table[Int(byte >> 4)]
+            out[i &* 2 &+ 1] = table[Int(byte & 0x0f)]
+        }
+        return String(decoding: out, as: UTF8.self)
     }
 }
 

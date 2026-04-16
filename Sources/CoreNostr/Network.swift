@@ -1,9 +1,10 @@
 import Foundation
-// Lightweight logging usage (MainActor to satisfy actor isolation)
-@MainActor private func logDebug(_ msg: @autoclosure () -> String) { NostrLogger.debug(msg()) }
-@MainActor private func logInfo(_ msg: @autoclosure () -> String)  { NostrLogger.info(msg()) }
-@MainActor private func logWarn(_ msg: @autoclosure () -> String)  { NostrLogger.warn(msg()) }
-@MainActor private func logError(_ msg: @autoclosure () -> String) { NostrLogger.error(msg()) }
+// Lightweight logging wrappers. Not MainActor-isolated — logging happens on
+// whatever thread the caller is on (often an off-main network context).
+private func logDebug(_ msg: @autoclosure () -> String) { NostrLogger.debug(msg()) }
+private func logInfo(_ msg: @autoclosure () -> String)  { NostrLogger.info(msg()) }
+private func logWarn(_ msg: @autoclosure () -> String)  { NostrLogger.warn(msg()) }
+private func logError(_ msg: @autoclosure () -> String) { NostrLogger.error(msg()) }
 import Combine
 
 // MARK: - Message Types
