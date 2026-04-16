@@ -145,45 +145,10 @@ public struct KeyPair: Sendable, Codable {
     /// - Returns: 32-byte shared secret for AES encryption
     /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if ECDH fails
     public func getSharedSecret(with recipientPublicKey: PublicKey) throws -> Data {
-        guard let privateKeyData = Data(hex: privateKey),
-              privateKeyData.count == 32,
-              let publicKeyData = Data(hex: recipientPublicKey),
-              publicKeyData.count == 32 else {
-            throw NostrError.encryptionError(operation: .keyExchange, reason: "Invalid key format or length")
-        }
-        
-        // Create P256K KeyAgreement private key
-        let p256kPrivateKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKeyData)
-        
-        // For x-only public keys, we need to recover the full public key
-        // Try with even y-coordinate first (0x02 prefix)
-        var compressedPubKey = Data()
-        compressedPubKey.append(0x02)
-        compressedPubKey.append(publicKeyData)
-        
-        let p256kPublicKey: P256K.KeyAgreement.PublicKey
-        do {
-            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
-        } catch {
-            // If even y-coordinate fails, try odd (0x03 prefix)
-            compressedPubKey[0] = 0x03
-            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
-        }
-        
-        // Compute the shared secret
-        let sharedSecret = try p256kPrivateKey.sharedSecretFromKeyAgreement(with: p256kPublicKey)
-        
-        // For NIP-04, we need to return the raw shared secret (32 bytes)
-        let sharedSecretData = Data(sharedSecret.bytes)
-        
-        // If the shared secret is compressed (33 bytes), extract the x-coordinate
-        if sharedSecretData.count == 33 {
-            return Data(sharedSecretData[1..<33])
-        } else if sharedSecretData.count == 32 {
-            return sharedSecretData
-        } else {
-            throw NostrError.encryptionError(operation: .keyExchange, reason: "Unexpected shared secret size: \(sharedSecretData.count) bytes")
-        }
+        try NostrCrypto.ecdhSharedSecret(
+            privateKeyHex: privateKey,
+            publicKeyHex: recipientPublicKey
+        )
     }
     
     /// Encrypts a message to a recipient using NIP-04 encryption.
@@ -313,11 +278,74 @@ public struct NostrCrypto: Sendable {
     }
     
     /// Validates whether a string is a valid signature.
-    /// 
+    ///
     /// - Parameter signature: The signature to validate
     /// - Returns: `true` if the signature is a valid 128-character hexadecimal string
     public static func isValidSignature(_ signature: Signature) -> Bool {
         return signature.count == 128 && signature.allSatisfy { $0.isHexDigit }
+    }
+
+    /// Computes the raw ECDH shared secret (x-coordinate) between a hex-encoded
+    /// private key and a hex-encoded x-only public key.
+    ///
+    /// Both NIP-04 and NIP-44 use this same primitive. NIP-04 uses the 32-byte
+    /// result directly as the AES key; NIP-44 feeds it into HKDF-extract as IKM.
+    ///
+    /// Because NOSTR public keys are x-only (NIP-01), the full point is recovered
+    /// by trying the even y-parity (`0x02` prefix) first, then falling back to
+    /// odd (`0x03`). Some P256K builds return the shared secret already as the
+    /// raw x-coordinate (32 bytes); others return compressed (33 bytes) or
+    /// uncompressed (64 bytes, x || y). We normalize to the 32-byte x-coordinate.
+    ///
+    /// - Parameters:
+    ///   - privateKeyHex: 64-character hex private key
+    ///   - publicKeyHex: 64-character hex x-only public key
+    /// - Returns: 32-byte x-coordinate of the shared point
+    /// - Throws: `NostrError.encryptionError(operation: .keyExchange, ...)` on
+    ///   bad input or ECDH failure
+    internal static func ecdhSharedSecret(
+        privateKeyHex: String,
+        publicKeyHex: String
+    ) throws -> Data {
+        guard let privateKeyData = Data(hex: privateKeyHex),
+              privateKeyData.count == 32 else {
+            throw NostrError.encryptionError(operation: .keyExchange, reason: "Invalid private key")
+        }
+        guard let publicKeyData = Data(hex: publicKeyHex),
+              publicKeyData.count == 32 else {
+            throw NostrError.encryptionError(operation: .keyExchange, reason: "Invalid public key")
+        }
+
+        let p256kPrivateKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKeyData)
+
+        // x-only: try even y-parity first, fall back to odd.
+        var compressedPubKey = Data([0x02]) + publicKeyData
+        let p256kPublicKey: P256K.KeyAgreement.PublicKey
+        do {
+            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
+        } catch {
+            compressedPubKey[0] = 0x03
+            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
+        }
+
+        let sharedSecret = try p256kPrivateKey.sharedSecretFromKeyAgreement(with: p256kPublicKey)
+        let bytes = Data(sharedSecret.bytes)
+
+        switch bytes.count {
+        case 32:
+            return bytes
+        case 33:
+            // Compressed point (0x02/0x03 || x) — drop the parity byte.
+            return Data(bytes[1..<33])
+        case 64:
+            // Uncompressed point (x || y) — first 32 bytes are the x-coordinate.
+            return Data(bytes[0..<32])
+        default:
+            throw NostrError.encryptionError(
+                operation: .keyExchange,
+                reason: "Unexpected shared secret size: \(bytes.count) bytes"
+            )
+        }
     }
     
     /// Encrypts a message using AES-256-CBC with a random IV.

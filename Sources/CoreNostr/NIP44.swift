@@ -212,59 +212,22 @@ public enum NIP44 {
     }
     
     // MARK: - Private Methods
-    
-    /// Compute shared secret using ECDH
+
+    /// Compute shared secret using ECDH. Both `encrypt` and `decrypt` run
+    /// `Validation.validate{Private,Public}Key` before reaching here, so the
+    /// helper's input-validation paths are not expected to fire in practice;
+    /// any failure is remapped to `NIP44Error.encryptionFailed` to preserve
+    /// the existing error surface for callers.
     private static func computeSharedSecret(
         privateKey: String,
         publicKey: String
     ) throws -> Data {
-        guard let privKeyData = Data(hex: privateKey),
-              privKeyData.count == 32 else {
-            throw NIP44Error.invalidPrivateKey
-        }
-        
-        guard let pubKeyData = Data(hex: publicKey),
-              pubKeyData.count == 32 else {
-            throw NIP44Error.invalidPublicKey
-        }
-        
-        // Create P256K KeyAgreement private key from raw bytes
-        let p256kPrivateKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privKeyData)
-        
-        // For x-only public keys, we need to recover the full public key
-        // Try with even y-coordinate first (0x02 prefix)
-        var compressedPubKey = Data()
-        compressedPubKey.append(0x02)
-        compressedPubKey.append(pubKeyData)
-        
-        let p256kPublicKey: P256K.KeyAgreement.PublicKey
         do {
-            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
+            return try NostrCrypto.ecdhSharedSecret(
+                privateKeyHex: privateKey,
+                publicKeyHex: publicKey
+            )
         } catch {
-            // If even y-coordinate fails, try odd (0x03 prefix)
-            compressedPubKey[0] = 0x03
-            p256kPublicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: compressedPubKey)
-        }
-        
-        // Compute the shared secret (x-coordinate only)
-        let sharedSecret = try p256kPrivateKey.sharedSecretFromKeyAgreement(with: p256kPublicKey)
-        
-        // P256K returns a SharedSecret which might be in compressed format
-        // We need the raw x-coordinate for NIP-44
-        let sharedSecretData = Data(sharedSecret.bytes)
-        
-        if sharedSecretData.count == 33 {
-            // P256K returned compressed format (0x02/0x03 + 32 bytes)
-            // Skip the first byte to get the x-coordinate
-            return Data(sharedSecretData[1..<33])
-        } else if sharedSecretData.count == 32 {
-            // Already just the x-coordinate
-            return sharedSecretData
-        } else if sharedSecretData.count == 64 {
-            // Might be SHA512 hash, take first 32 bytes
-            return Data(sharedSecretData[0..<32])
-        } else {
-            // Unexpected size
             throw NIP44Error.encryptionFailed
         }
     }
