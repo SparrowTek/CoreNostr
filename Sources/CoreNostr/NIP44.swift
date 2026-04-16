@@ -278,8 +278,11 @@ public enum NIP44 {
     ///   for encryption security.
     private static func generateNonce() throws -> Data {
         var nonce = Data(count: 32)
-        let result = nonce.withUnsafeMutableBytes { bytes in
-            SecRandomCopyBytes(kSecRandomDefault, 32, bytes.baseAddress!)
+        let result = nonce.withUnsafeMutableBytes { bytes -> Int32 in
+            guard let baseAddress = bytes.baseAddress else {
+                return errSecParam
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, 32, baseAddress)
         }
         guard result == errSecSuccess else {
             // Never fall back to predictable nonces - this would be a security catastrophe
@@ -300,7 +303,7 @@ public enum NIP44 {
     ) throws -> (chachaKey: Data, chachaNonce: Data, hmacKey: Data) {
         // Step 1: Derive conversation key using HKDF-extract
         // salt = "nip44-v2", IKM = shared_x (32 bytes)
-        let salt = "nip44-v2".data(using: .utf8)!
+        let salt = Data("nip44-v2".utf8)
         
         // HKDF-extract produces a fixed-size output (32 bytes with SHA256)
         let conversationKey = HKDF<CryptoKit.SHA256>.extract(

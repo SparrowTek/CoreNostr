@@ -49,7 +49,7 @@ public enum NIP59 {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let eventData = try encoder.encode(event)
-        let eventJSON = String(data: eventData, encoding: .utf8)!
+        let eventJSON = String(decoding: eventData, as: UTF8.self)
         
         // Encrypt the rumor using NIP-44
         let encryptedContent = try NIP44.encrypt(
@@ -92,7 +92,7 @@ public enum NIP59 {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let sealData = try encoder.encode(seal)
-        let sealJSON = String(data: sealData, encoding: .utf8)!
+        let sealJSON = String(decoding: sealData, as: UTF8.self)
         
         // Encrypt the seal using NIP-44 with random key
         let encryptedContent = try NIP44.encrypt(
@@ -226,8 +226,11 @@ public enum NIP59 {
     private static func generateRandomKeyPair() throws -> KeyPair {
         // Generate random 32 bytes for private key
         var privateKeyData = Data(count: 32)
-        let result = privateKeyData.withUnsafeMutableBytes { bytes in
-            SecRandomCopyBytes(kSecRandomDefault, 32, bytes.baseAddress!)
+        let result = privateKeyData.withUnsafeMutableBytes { bytes -> Int32 in
+            guard let baseAddress = bytes.baseAddress else {
+                return errSecParam
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, 32, baseAddress)
         }
         
         guard result == errSecSuccess else {

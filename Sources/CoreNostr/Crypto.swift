@@ -620,8 +620,11 @@ public struct BIP39: Sendable {
         
         let byteCount = strength / 8
         var randomBytes = Data(count: byteCount)
-        let result = randomBytes.withUnsafeMutableBytes { bytes in
-            SecRandomCopyBytes(kSecRandomDefault, byteCount, bytes.bindMemory(to: UInt8.self).baseAddress!)
+        let result = randomBytes.withUnsafeMutableBytes { bytes -> Int32 in
+            guard let baseAddress = bytes.bindMemory(to: UInt8.self).baseAddress else {
+                return errSecParam
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, byteCount, baseAddress)
         }
         
         guard result == errSecSuccess else {
@@ -682,8 +685,8 @@ public struct BIP39: Sendable {
         let normalizedPassphrase = "mnemonic" + passphrase
         
         // PBKDF2 with HMAC-SHA512
-        let mnemonicData = normalizedMnemonic.data(using: .utf8)!
-        let passphraseData = normalizedPassphrase.data(using: .utf8)!
+        let mnemonicData = Data(normalizedMnemonic.utf8)
+        let passphraseData = Data(normalizedPassphrase.utf8)
         
         // Use our PBKDF2 implementation
         do {
@@ -740,7 +743,7 @@ public struct BIP32: Sendable {
         
         // HMAC-SHA512 with "Bitcoin seed" as key
         let keyString = "Bitcoin seed"
-        let keyData = keyString.data(using: .utf8)!
+        let keyData = Data(keyString.utf8)
         
         // Use HMAC from CryptoKit for consistency
         let key = SymmetricKey(data: keyData)
@@ -855,8 +858,11 @@ public struct NIP06: Sendable {
     /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if random generation fails
     public static func randomBytes(count: Int) throws -> Data {
         var bytes = Data(count: count)
-        let result = bytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, count, buffer.baseAddress!)
+        let result = bytes.withUnsafeMutableBytes { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else {
+                return errSecParam
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, count, baseAddress)
         }
         
         guard result == errSecSuccess else {

@@ -520,7 +520,7 @@ public extension NostrEvent {
     ) throws -> NostrEvent {
         let request = NWCRequest(method: method, params: params)
         let jsonData = try JSONEncoder().encode(request)
-        let jsonString = String(data: jsonData, encoding: .utf8)!
+        let jsonString = String(decoding: jsonData, as: UTF8.self)
         
         // Get client pubkey from secret
         let clientKeyPair = try KeyPair(privateKey: clientSecret)
@@ -574,7 +574,7 @@ public extension NostrEvent {
     ) throws -> NostrEvent {
         let response = NWCResponse(resultType: resultType, error: error, result: result)
         let jsonData = try JSONEncoder().encode(response)
-        let jsonString = String(data: jsonData, encoding: .utf8)!
+        let jsonString = String(decoding: jsonData, as: UTF8.self)
         
         // Get wallet pubkey from secret
         let walletKeyPair = try KeyPair(privateKey: walletSecret)
@@ -626,7 +626,7 @@ public extension NostrEvent {
     ) throws -> NostrEvent {
         let notif = NWCNotification(notificationType: type, notification: notification)
         let jsonData = try JSONEncoder().encode(notif)
-        let jsonString = String(data: jsonData, encoding: .utf8)!
+        let jsonString = String(decoding: jsonData, as: UTF8.self)
         
         // Get wallet pubkey from secret
         let walletKeyPair = try KeyPair(privateKey: walletSecret)

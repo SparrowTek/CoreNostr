@@ -262,7 +262,7 @@ public extension CoreNostr {
     ) throws -> String {
         let tags = items.map { $0.toTag() }
         let jsonData = try JSONSerialization.data(withJSONObject: tags)
-        let jsonString = String(data: jsonData, encoding: .utf8)!
+        let jsonString = String(decoding: jsonData, as: UTF8.self)
         
         let sharedSecret = try senderKeyPair.getSharedSecret(with: recipientPublicKey)
         let encrypted = try NostrCrypto.encryptMessage(jsonString, with: sharedSecret)
