@@ -29,24 +29,31 @@ struct ChaCha20 {
     /// - Parameter data: Data to process
     /// - Returns: Processed data
     func process(_ data: Data) -> Data {
-        var output = Data(capacity: data.count)
+        let count = data.count
+        var output = [UInt8](repeating: 0, count: count)
         var currentCounter = counter
-        
-        // Process in 64-byte blocks
-        for chunkStart in stride(from: 0, to: data.count, by: 64) {
-            let chunkEnd = min(chunkStart + 64, data.count)
-            let chunk = data[chunkStart..<chunkEnd]
-            
-            let keystream = generateKeystream(counter: currentCounter)
-            
-            for (i, byte) in chunk.enumerated() {
-                output.append(byte ^ keystream[i])
+
+        // XOR full 64-byte blocks + remainder. Writing into a preallocated
+        // [UInt8] (rather than appending per byte to Data) avoids 64×N
+        // refcount/copy-on-write operations for the stream cipher.
+        data.withUnsafeBytes { (src: UnsafeRawBufferPointer) in
+            output.withUnsafeMutableBufferPointer { dst in
+                var offset = 0
+                while offset < count {
+                    let keystream = generateKeystream(counter: currentCounter)
+                    let blockLen = Swift.min(64, count - offset)
+                    keystream.withUnsafeBytes { (ks: UnsafeRawBufferPointer) in
+                        for i in 0..<blockLen {
+                            dst[offset + i] = src[offset + i] ^ ks[i]
+                        }
+                    }
+                    offset += blockLen
+                    currentCounter &+= 1
+                }
             }
-            
-            currentCounter += 1
         }
-        
-        return output
+
+        return Data(output)
     }
     
     /// Generate 64-byte keystream block

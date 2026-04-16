@@ -22,7 +22,19 @@ import Foundation
 /// let isValid = try CoreNostr.verifyEvent(note)
 /// ```
 public struct CoreNostr {
-    
+
+    /// Returns a random past timestamp within `window` seconds of "now".
+    ///
+    /// Used by privacy-oriented NIPs (NIP-17, NIP-59 gift wrap) to randomize
+    /// event `created_at` within a plausible window so observers can't
+    /// correlate sender/recipient/timing by matching exact timestamps.
+    ///
+    /// - Parameter window: Maximum lookback in seconds (default: 2 days)
+    /// - Returns: `Date` between `now - window` and `now`
+    public static func randomizedPastTimestamp(window: TimeInterval = 2 * 24 * 60 * 60) -> Date {
+        Date().addingTimeInterval(-TimeInterval.random(in: 0...window))
+    }
+
     /// Creates a new random key pair.
     ///
     /// - Returns: A new ``KeyPair`` with randomly generated private and public keys

@@ -214,12 +214,12 @@ public enum NIP59 {
         return (rumor, seal)
     }
     
-    /// Generate a randomized timestamp up to 2 days in the past
+    /// Generate a randomized timestamp up to 2 days in the past.
+    /// Delegates to the shared `CoreNostr.randomizedPastTimestamp(window:)`
+    /// helper so other privacy-oriented NIPs (NIP-17 DMs, future NIPs) can
+    /// share the same backdating policy.
     private static func randomizedTimestamp() -> Date {
-        let now = Date()
-        let twoDaysInSeconds: TimeInterval = 2 * 24 * 60 * 60
-        let randomOffset = TimeInterval.random(in: 0...twoDaysInSeconds)
-        return now.addingTimeInterval(-randomOffset)
+        CoreNostr.randomizedPastTimestamp(window: 2 * 24 * 60 * 60)
     }
     
     /// Generate a random key pair for gift wrapping

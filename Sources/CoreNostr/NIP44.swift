@@ -48,12 +48,15 @@ public enum NIP44 {
     
     /// Current version of the encryption scheme
     private static let version: UInt8 = 2
-    
+
     /// Minimum plaintext size
     private static let minPlaintextSize = 1
-    
+
     /// Maximum plaintext size (64KB - 1)
     private static let maxPlaintextSize = 65535
+
+    /// HKDF salt for NIP-44 v2 conversation-key derivation.
+    private static let conversationKeySalt = Data("nip44-v2".utf8)
     
     /// Encrypt a message using NIP-44 specification
     /// - Parameters:
@@ -266,12 +269,9 @@ public enum NIP44 {
     ) throws -> (chachaKey: Data, chachaNonce: Data, hmacKey: Data) {
         // Step 1: Derive conversation key using HKDF-extract
         // salt = "nip44-v2", IKM = shared_x (32 bytes)
-        let salt = Data("nip44-v2".utf8)
-        
-        // HKDF-extract produces a fixed-size output (32 bytes with SHA256)
         let conversationKey = HKDF<CryptoKit.SHA256>.extract(
             inputKeyMaterial: SymmetricKey(data: sharedSecret),
-            salt: salt
+            salt: Self.conversationKeySalt
         )
         
         // Step 2: Derive per-message keys using HKDF-expand
