@@ -28,19 +28,20 @@ public struct NIP06: Sendable {
         // Create master key
         let masterKey = try BIP32.createMasterKey(from: seed)
 
-        // Derive path m/44'/1237'/account'/0'/0' — BIP-44 purpose, Nostr coin type,
-        // all hardened as required by NIP-06.
+        // Derive path `m/44'/1237'/account'/0/0` per NIP-06: purpose, coin
+        // type, and account are hardened; the trailing `change` and
+        // `address_index` levels are NOT hardened (BIP-44 convention).
         let purpose = try BIP32.deriveChild(masterKey, index: BIP32.hardened(bip44Purpose))
         let coinType = try BIP32.deriveChild(purpose, index: BIP32.hardened(nostrCoinType))
         let accountKey = try BIP32.deriveChild(coinType, index: BIP32.hardened(account))
-        let change = try BIP32.deriveChild(accountKey, index: BIP32.hardened(0))
-        let addressKey = try BIP32.deriveChild(change, index: BIP32.hardened(0))
+        let change = try BIP32.deriveChild(accountKey, index: 0)
+        let addressKey = try BIP32.deriveChild(change, index: 0)
 
         // Convert to KeyPair
         let privateKeyHex = addressKey.key.hex
         return try KeyPair(privateKey: privateKeyHex)
     }
-    
+
     /// Generates a new mnemonic and derives a key pair
     /// - Parameters:
     ///   - strength: Entropy strength in bits (default: 256)
@@ -85,9 +86,9 @@ public struct NIP06: Sendable {
             try generateKeyPair(strength: strength, passphrase: passphrase, account: account)
         }.value
     }
-    
+
     /// Generates cryptographically secure random bytes.
-    /// 
+    ///
     /// - Parameter count: The number of random bytes to generate
     /// - Returns: Random bytes as Data
     /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if random generation fails
@@ -99,25 +100,25 @@ public struct NIP06: Sendable {
             }
             return SecRandomCopyBytes(kSecRandomDefault, count, baseAddress)
         }
-        
+
         guard result == errSecSuccess else {
             throw NostrError.cryptographyError(operation: .keyGeneration, reason: "Failed to generate random bytes")
         }
-        
+
         return bytes
     }
-    
+
     /// Computes SHA-256 hash of the given data.
-    /// 
+    ///
     /// - Parameter data: The data to hash
     /// - Returns: 32-byte hash result
     public static func sha256(_ data: Data) -> Data {
         let digest = CryptoKit.SHA256.hash(data: data)
         return Data(digest)
     }
-    
+
     /// Computes HMAC-SHA256 of the given message with key.
-    /// 
+    ///
     /// - Parameters:
     ///   - key: The secret key
     ///   - message: The message to authenticate
@@ -127,9 +128,9 @@ public struct NIP06: Sendable {
         let mac = HMAC<CryptoKit.SHA256>.authenticationCode(for: message, using: SymmetricKey(data: key))
         return Data(mac)
     }
-    
+
     /// Encrypts data using AES-256-CBC.
-    /// 
+    ///
     /// - Parameters:
     ///   - plaintext: The data to encrypt
     ///   - key: 32-byte encryption key
@@ -143,16 +144,16 @@ public struct NIP06: Sendable {
         guard iv.count == 16 else {
             throw NostrError.encryptionError(operation: .encrypt, reason: "IV must be 16 bytes")
         }
-        
+
         do {
             return try AES256CBC.encrypt(data: plaintext, key: key, iv: iv)
         } catch {
             throw NostrError.encryptionError(operation: .encrypt, reason: error.localizedDescription)
         }
     }
-    
+
     /// Decrypts data using AES-256-CBC.
-    /// 
+    ///
     /// - Parameters:
     ///   - ciphertext: The data to decrypt
     ///   - key: 32-byte decryption key
@@ -166,7 +167,7 @@ public struct NIP06: Sendable {
         guard iv.count == 16 else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "IV must be 16 bytes")
         }
-        
+
         do {
             return try AES256CBC.decrypt(data: ciphertext, key: key, iv: iv)
         } catch {

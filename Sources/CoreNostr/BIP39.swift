@@ -213,7 +213,7 @@ public struct BIP39: Sendable {
         "worry", "worth", "wrap", "wreck", "wrestle", "wrist", "write", "wrong", "yard", "year",
         "yellow", "you", "young", "youth", "zebra", "zero", "zone", "zoo"
     ]
-    
+
     /// Generates entropy for mnemonic generation
     /// - Parameter strength: Entropy strength in bits (128, 160, 192, 224, or 256)
     /// - Returns: Random entropy data
@@ -222,7 +222,7 @@ public struct BIP39: Sendable {
         guard [128, 160, 192, 224, 256].contains(strength) else {
             throw NostrError.cryptographyError(operation: .randomGeneration, reason: "Invalid entropy strength: \(strength) bits. Must be 128, 160, 192, 224, or 256 bits")
         }
-        
+
         let byteCount = strength / 8
         var randomBytes = Data(count: byteCount)
         let result = randomBytes.withUnsafeMutableBytes { bytes -> Int32 in
@@ -231,14 +231,14 @@ public struct BIP39: Sendable {
             }
             return SecRandomCopyBytes(kSecRandomDefault, byteCount, baseAddress)
         }
-        
+
         guard result == errSecSuccess else {
             throw NostrError.cryptographyError(operation: .randomGeneration, reason: "Failed to generate secure random entropy")
         }
-        
+
         return randomBytes
     }
-    
+
     /// Converts entropy to mnemonic phrase
     /// - Parameter entropy: Entropy data (16, 20, 24, 28, or 32 bytes)
     /// - Returns: Mnemonic phrase as space-separated words
@@ -248,37 +248,37 @@ public struct BIP39: Sendable {
         guard [128, 160, 192, 224, 256].contains(entropyBits) else {
             throw NostrError.cryptographyError(operation: .keyGeneration, reason: "Invalid entropy length: \(entropy.count) bytes. Expected 16, 20, 24, 28, or 32 bytes")
         }
-        
+
         // Calculate checksum
         let hash = SHA256.hash(data: entropy)
         let checksumBits = entropyBits / 32
         let checksum = Data(hash).prefix(1)
-        
+
         // Convert to binary string
         var binaryString = ""
         for byte in entropy {
             binaryString += String(byte, radix: 2).padLeft(to: 8, with: "0")
         }
-        
+
         // Add checksum bits
         let checksumByte = checksum[0]
         let checksumBinary = String(checksumByte, radix: 2).padLeft(to: 8, with: "0")
         binaryString += String(checksumBinary.prefix(checksumBits))
-        
+
         // Split into 11-bit groups and convert to words
         var words: [String] = []
         for i in stride(from: 0, to: binaryString.count, by: 11) {
             let endIndex = min(i + 11, binaryString.count)
             let group = String(binaryString[binaryString.index(binaryString.startIndex, offsetBy: i)..<binaryString.index(binaryString.startIndex, offsetBy: endIndex)])
-            
+
             if let index = Int(group, radix: 2), index < wordlist.count {
                 words.append(wordlist[index])
             }
         }
-        
+
         return words.joined(separator: " ")
     }
-    
+
     /// Converts mnemonic phrase to seed
     /// - Parameters:
     ///   - mnemonic: Space-separated mnemonic words
@@ -288,11 +288,11 @@ public struct BIP39: Sendable {
     public static func mnemonicToSeed(_ mnemonic: String, passphrase: String = "") throws -> Data {
         let normalizedMnemonic = mnemonic.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPassphrase = "mnemonic" + passphrase
-        
+
         // PBKDF2 with HMAC-SHA512
         let mnemonicData = Data(normalizedMnemonic.utf8)
         let passphraseData = Data(normalizedPassphrase.utf8)
-        
+
         // Use our PBKDF2 implementation
         do {
             return try PBKDF2.pbkdf2SHA512(
@@ -305,7 +305,7 @@ public struct BIP39: Sendable {
             throw NostrError.cryptographyError(operation: .keyDerivation, reason: "PBKDF2 derivation failed: \(error.localizedDescription)")
         }
     }
-    
+
     /// Generates a new mnemonic phrase
     /// - Parameter strength: Entropy strength in bits (default: 256)
     /// - Returns: New mnemonic phrase

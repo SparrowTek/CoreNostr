@@ -69,7 +69,7 @@ public extension NostrCrypto {
             )
         }
     }
-    
+
     /// Encrypts a message using AES-256-CBC with a random IV.
     ///
     /// This follows the NIP-04 specification for encrypted direct messages.
@@ -79,28 +79,28 @@ public extension NostrCrypto {
     ///   - sharedSecret: The 32-byte shared secret from ECDH
     /// - Returns: Base64-encoded encrypted message with IV in format "encrypted?iv=base64_iv"
     /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if encryption fails
-    public static func encryptMessage(_ message: String, with sharedSecret: Data) throws -> String {
+    static func encryptMessage(_ message: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
             throw NostrError.encryptionError(operation: .encrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
         }
-        
+
         // NIP-04 specifies AES-256-CBC encryption
         let messageData = Data(message.utf8)
         let iv = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
-        
+
         do {
             // Use AES-256-CBC encryption with PKCS7 padding
             let encryptedData = try AES256CBC.encrypt(data: messageData, key: sharedSecret, iv: iv)
-            
+
             let encryptedBase64 = encryptedData.base64EncodedString()
             let ivBase64 = iv.base64EncodedString()
-            
+
             return "\(encryptedBase64)?iv=\(ivBase64)"
         } catch {
             throw NostrError.encryptionError(operation: .encrypt, reason: "AES-256-CBC encryption failed: \(error.localizedDescription)")
         }
     }
-    
+
     /// Decrypts a message using AES-256-CBC.
     ///
     /// This follows the NIP-04 specification for encrypted direct messages.
@@ -110,35 +110,35 @@ public extension NostrCrypto {
     ///   - sharedSecret: The 32-byte shared secret from ECDH
     /// - Returns: The decrypted plaintext message
     /// - Throws: ``NostrError/cryptographyError(operation:reason:)`` if decryption fails
-    public static func decryptMessage(_ encryptedContent: String, with sharedSecret: Data) throws -> String {
+    static func decryptMessage(_ encryptedContent: String, with sharedSecret: Data) throws -> String {
         guard sharedSecret.count == 32 else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "Shared secret must be 32 bytes, got \(sharedSecret.count)")
         }
-        
+
         // Parse the content format: "encrypted?iv=base64_iv"
         let components = encryptedContent.split(separator: "?", maxSplits: 1)
         guard components.count == 2,
               let ivParam = components[1].split(separator: "=", maxSplits: 1).last else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "Invalid encrypted content format. Expected 'encrypted?iv=base64_iv'")
         }
-        
+
         let encryptedBase64 = String(components[0])
         let ivBase64 = String(ivParam)
-        
+
         guard let encryptedData = Data(base64Encoded: encryptedBase64),
               let iv = Data(base64Encoded: ivBase64),
               iv.count == 16 else {
             throw NostrError.encryptionError(operation: .decrypt, reason: "Invalid base64 encoding or IV must be 16 bytes")
         }
-        
+
         do {
             // Use AES-256-CBC decryption with PKCS7 padding
             let decryptedData = try AES256CBC.decrypt(data: encryptedData, key: sharedSecret, iv: iv)
-            
+
             guard let decryptedString = String(data: decryptedData, encoding: .utf8) else {
                 throw NostrError.encryptionError(operation: .decrypt, reason: "Decrypted data is not valid UTF-8 text")
             }
-            
+
             return decryptedString
         } catch {
             throw NostrError.encryptionError(operation: .decrypt, reason: "AES-256-CBC decryption failed: \(error.localizedDescription)")
