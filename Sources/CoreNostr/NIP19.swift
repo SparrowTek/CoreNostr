@@ -505,10 +505,28 @@ public extension Bech32Entity {
         case kind = 3
     }
     
+    /// Appends one TLV record, validating that the value fits the one-byte length field.
+    private func appendTLV(_ type: TLVType, value: Data, entity: String, field: String, to result: inout Data) throws {
+        guard value.count <= Int(UInt8.max) else {
+            throw NostrError.invalidBech32(entity: entity, reason: "\(field) exceeds the 255-byte TLV limit")
+        }
+        result.append(type.rawValue)
+        result.append(UInt8(value.count))
+        result.append(value)
+    }
+
+    /// Encodes a kind as the fixed 4-byte big-endian value NIP-19 specifies.
+    private func kindTLVValue(_ kind: Int, entity: String) throws -> Data {
+        guard let kindValue = UInt32(exactly: kind) else {
+            throw NostrError.invalidBech32(entity: entity, reason: "Kind must fit in an unsigned 32-bit integer")
+        }
+        return withUnsafeBytes(of: kindValue.bigEndian) { Data($0) }
+    }
+
     /// Encode TLV for nprofile
     private func encodeTLV(profile: NProfile) throws -> Data {
         var result = Data()
-        
+
         // Add pubkey (special = 0)
         result.append(TLVType.special.rawValue)
         result.append(32) // length
@@ -516,15 +534,12 @@ public extension Bech32Entity {
             throw NostrError.invalidBech32(entity: "nprofile", reason: "Invalid hexadecimal format for public key")
         }
         result.append(pubkeyData)
-        
+
         // Add relays
         for relay in profile.relays {
-            let relayData = Data(relay.utf8)
-            result.append(TLVType.relay.rawValue)
-            result.append(UInt8(relayData.count))
-            result.append(relayData)
+            try appendTLV(.relay, value: Data(relay.utf8), entity: "nprofile", field: "Relay URL", to: &result)
         }
-        
+
         return result
     }
     
@@ -543,13 +558,10 @@ public extension Bech32Entity {
         // Add relays
         if let relays = event.relays {
             for relay in relays {
-                let relayData = Data(relay.utf8)
-                result.append(TLVType.relay.rawValue)
-                result.append(UInt8(relayData.count))
-                result.append(relayData)
+                try appendTLV(.relay, value: Data(relay.utf8), entity: "nevent", field: "Relay URL", to: &result)
             }
         }
-        
+
         // Add author
         if let author = event.author {
             result.append(TLVType.author.rawValue)
@@ -559,42 +571,29 @@ public extension Bech32Entity {
             }
             result.append(authorData)
         }
-        
-        // Add kind
+
+        // Add kind (fixed 4-byte big-endian per NIP-19)
         if let kind = event.kind {
-            var kindBytes = withUnsafeBytes(of: UInt32(kind).bigEndian) { Data($0) }
-            // Remove leading zeros
-            while kindBytes.count > 1 && kindBytes.first == 0 {
-                kindBytes = kindBytes.dropFirst()
-            }
-            result.append(TLVType.kind.rawValue)
-            result.append(UInt8(kindBytes.count))
-            result.append(kindBytes)
+            try appendTLV(.kind, value: kindTLVValue(kind, entity: "nevent"), entity: "nevent", field: "Kind", to: &result)
         }
-        
+
         return result
     }
     
     /// Encode TLV for naddr
     private func encodeTLV(addr: NAddr) throws -> Data {
         var result = Data()
-        
+
         // Add identifier (special = 0)
-        let idData = Data(addr.identifier.utf8)
-        result.append(TLVType.special.rawValue)
-        result.append(UInt8(idData.count))
-        result.append(idData)
-        
+        try appendTLV(.special, value: Data(addr.identifier.utf8), entity: "naddr", field: "Identifier", to: &result)
+
         // Add relays
         if let relays = addr.relays {
             for relay in relays {
-                let relayData = Data(relay.utf8)
-                result.append(TLVType.relay.rawValue)
-                result.append(UInt8(relayData.count))
-                result.append(relayData)
+                try appendTLV(.relay, value: Data(relay.utf8), entity: "naddr", field: "Relay URL", to: &result)
             }
         }
-        
+
         // Add author
         result.append(TLVType.author.rawValue)
         result.append(32) // length
@@ -602,17 +601,10 @@ public extension Bech32Entity {
             throw NostrError.invalidBech32(entity: "naddr", reason: "Invalid hexadecimal format for public key")
         }
         result.append(pubkeyData)
-        
-        // Add kind
-        var kindBytes = withUnsafeBytes(of: UInt32(addr.kind).bigEndian) { Data($0) }
-        // Remove leading zeros
-        while kindBytes.count > 1 && kindBytes[0] == 0 {
-            kindBytes = kindBytes.dropFirst()
-        }
-        result.append(TLVType.kind.rawValue)
-        result.append(UInt8(kindBytes.count))
-        result.append(kindBytes)
-        
+
+        // Add kind (fixed 4-byte big-endian per NIP-19)
+        try appendTLV(.kind, value: kindTLVValue(addr.kind, entity: "naddr"), entity: "naddr", field: "Kind", to: &result)
+
         return result
     }
     

@@ -73,7 +73,7 @@ public struct ProofOfWork: Sendable {
         targetDifficulty: Int,
         config: MiningConfig = .default
     ) async throws -> NostrEvent {
-        guard targetDifficulty >= 0 && targetDifficulty <= 256 else {
+        guard targetDifficulty >= 0 && targetDifficulty < 256 else {
             throw PoWError.invalidDifficulty
         }
         

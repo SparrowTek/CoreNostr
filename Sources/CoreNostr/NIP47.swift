@@ -325,8 +325,18 @@ public struct NWCConnectionURI: Sendable, Codable {
     
     /// Parse a NWC URI string
     public init?(from uriString: String) {
-        guard let url = URL(string: uriString),
-              url.scheme == Self.scheme,
+        // Some wallet services emit the slash-less form
+        // ("nostr+walletconnect:pubkey?..."); URL only exposes a host when
+        // "//" follows the scheme, so normalize before parsing.
+        var normalized = uriString
+        let lowercased = uriString.lowercased()
+        let schemePrefix = "\(Self.scheme):"
+        if lowercased.hasPrefix(schemePrefix), !lowercased.hasPrefix("\(Self.scheme)://") {
+            normalized = "\(Self.scheme)://" + uriString.dropFirst(schemePrefix.count)
+        }
+
+        guard let url = URL(string: normalized),
+              url.scheme?.lowercased() == Self.scheme,
               let host = url.host else {
             return nil
         }
@@ -518,7 +528,9 @@ public extension NostrEvent {
         encryption: NWCEncryption = .nip44,
         expiration: Date? = nil
     ) throws -> NostrEvent {
-        let request = NWCRequest(method: method, params: params)
+        // Always send a params object ("params": {}), matching the NIP-47 examples;
+        // some wallet services reject requests with the key missing entirely.
+        let request = NWCRequest(method: method, params: params ?? [:])
         let jsonData = try JSONEncoder().encode(request)
         let jsonString = String(decoding: jsonData, as: UTF8.self)
         
@@ -730,6 +742,9 @@ public struct AnyCodable: Codable {
             self.value = bool
         } else if let int = try? container.decode(Int.self) {
             self.value = int
+        } else if let uint64 = try? container.decode(UInt64.self) {
+            // Values above Int64.max (e.g. large TLV types) don't fit in Int
+            self.value = uint64
         } else if let double = try? container.decode(Double.self) {
             self.value = double
         } else if let string = try? container.decode(String.self) {
@@ -758,10 +773,21 @@ public struct AnyCodable: Codable {
             try container.encode(int)
         case let int64 as Int64:
             try container.encode(int64)
+        case let uint as UInt:
+            try container.encode(uint)
+        case let uint64 as UInt64:
+            try container.encode(uint64)
         case let double as Double:
             try container.encode(double)
         case let string as String:
             try container.encode(string)
+        case let nested as AnyCodable:
+            // Unwrap nested wrappers instead of double-wrapping them below
+            try container.encode(nested)
+        case let array as [AnyCodable]:
+            try container.encode(array)
+        case let dictionary as [String: AnyCodable]:
+            try container.encode(dictionary)
         case let array as [Any]:
             try container.encode(array.map { AnyCodable($0) })
         case let dictionary as [String: Any]:

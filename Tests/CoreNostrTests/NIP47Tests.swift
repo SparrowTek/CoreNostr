@@ -193,4 +193,84 @@ struct NIP47Tests {
         #expect(response.error?.message == "Monthly budget reached")
         #expect(response.result == nil)
     }
+
+    // MARK: - URI Interop
+
+    @Test("Parses slash-less NWC URI variant")
+    func testSlashlessURIParsing() throws {
+        let pubkey = String(repeating: "a", count: 64)
+        let secret = String(repeating: "b", count: 64)
+        let uriString = "nostr+walletconnect:\(pubkey)?relay=wss%3A%2F%2Frelay.damus.io&secret=\(secret)"
+
+        guard let uri = NWCConnectionURI(from: uriString) else {
+            Issue.record("Failed to parse slash-less NWC URI")
+            return
+        }
+
+        #expect(uri.walletPubkey == pubkey)
+        #expect(uri.secret == secret)
+        #expect(uri.relays == ["wss://relay.damus.io"])
+    }
+
+    // MARK: - Request Encoding
+
+    @Test("Request without params still encodes an empty params object")
+    func testRequestAlwaysIncludesParams() throws {
+        let clientKeyPair = try KeyPair.generate()
+        let walletKeyPair = try KeyPair.generate()
+
+        let event = try NostrEvent.nwcRequest(
+            method: .getBalance,
+            params: nil,
+            walletPubkey: walletKeyPair.publicKey,
+            clientSecret: clientKeyPair.privateKey,
+            encryption: .nip44
+        )
+
+        let decrypted = try event.decryptNWCContent(
+            with: walletKeyPair.privateKey,
+            peerPubkey: clientKeyPair.publicKey
+        )
+
+        let json = try JSONSerialization.jsonObject(with: Data(decrypted.utf8)) as? [String: Any]
+        #expect(json?["method"] as? String == "get_balance")
+        #expect(json?["params"] as? [String: Any] != nil, "params key must be present as an object")
+    }
+
+    // MARK: - AnyCodable Numeric Support
+
+    @Test("AnyCodable encodes and decodes UInt64 values (keysend TLV types)")
+    func testAnyCodableUInt64() throws {
+        // TLV record types are u64 and can exceed Int64.max
+        let tlvType: UInt64 = 5_482_373_484
+        let encoded = try JSONEncoder().encode(["type": AnyCodable(tlvType)])
+        let jsonString = String(decoding: encoded, as: UTF8.self)
+        #expect(jsonString.contains("5482373484"))
+
+        let large: UInt64 = UInt64(Int64.max) + 1
+        let encodedLarge = try JSONEncoder().encode(["type": AnyCodable(large)])
+        let decoded = try JSONDecoder().decode([String: AnyCodable].self, from: encodedLarge)
+        #expect(decoded["type"]?.value as? UInt64 == large)
+    }
+
+    @Test("AnyCodable encodes nested AnyCodable structures (multi_pay params shape)")
+    func testAnyCodableNestedWrappers() throws {
+        // multi_pay_invoice params: an AnyCodable wrapping [[String: AnyCodable]]
+        let invoices: [[String: AnyCodable]] = [
+            ["invoice": AnyCodable("lnbc1"), "id": AnyCodable("a")],
+            ["invoice": AnyCodable("lnbc2"), "amount": AnyCodable(Int64(123))]
+        ]
+        let params: [String: AnyCodable] = ["invoices": AnyCodable(invoices)]
+
+        let data = try JSONEncoder().encode(params)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let decodedInvoices = json?["invoices"] as? [[String: Any]]
+
+        #expect(decodedInvoices?.count == 2)
+        #expect(decodedInvoices?.first?["invoice"] as? String == "lnbc1")
+
+        // Directly nested wrapper unwraps rather than throwing
+        let nested = try JSONEncoder().encode(AnyCodable(AnyCodable("x")))
+        #expect(String(decoding: nested, as: UTF8.self) == #""x""#)
+    }
 }
