@@ -1234,13 +1234,33 @@ struct CoreNostrTestSuite {
     #expect(childKey.depth == 1)
     #expect(childKey.childNumber == hardenedIndex)
     
-    // Test non-hardened derivation (should fail)
-    do {
-        _ = try BIP32.deriveChild(masterKey, index: 44)
-        #expect(Bool(false), "Should have thrown an error")
-    } catch {
-        #expect(error is NostrError)
+    // Non-hardened derivation must succeed — NIP-06's path
+    // (m/44'/1237'/account'/0/0) ends with two non-hardened steps.
+    let nonHardenedChild = try BIP32.deriveChild(masterKey, index: 44)
+    #expect(nonHardenedChild.key.count == 32)
+    #expect(nonHardenedChild.chainCode.count == 32)
+    #expect(nonHardenedChild.depth == 1)
+    #expect(nonHardenedChild.childNumber == 44)
+    #expect(nonHardenedChild.key != childKey.key, "Hardened and non-hardened children must differ")
+
+    // Official BIP-32 test vector 1 (seed 000102030405060708090a0b0c0d0e0f):
+    // validates master key creation plus hardened (m/0') and non-hardened
+    // (m/0'/1) derivation against known values from the spec.
+    guard let vectorSeed = Data(hex: "000102030405060708090a0b0c0d0e0f") else {
+        Issue.record("Invalid BIP-32 vector seed hex")
+        return
     }
+    let m = try BIP32.createMasterKey(from: vectorSeed)
+    #expect(m.key.hex == "e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
+    #expect(m.chainCode.hex == "873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508")
+
+    let m0h = try BIP32.deriveChild(m, index: BIP32.hardened(0))
+    #expect(m0h.key.hex == "edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea")
+    #expect(m0h.chainCode.hex == "47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141")
+
+    let m0h1 = try BIP32.deriveChild(m0h, index: 1)
+    #expect(m0h1.key.hex == "3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368")
+    #expect(m0h1.chainCode.hex == "2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19")
 }
 
 @Test func nip06KeyDerivation() async throws {
