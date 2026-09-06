@@ -133,90 +133,110 @@ public enum NIP46 {
         }
         
         /// Generates the URI string.
+        ///
+        /// Query values are percent-encoded with `+` escaped as `%2B`: parsers
+        /// that form-decode the query (the spec example itself writes
+        /// `name=My+Client`) would otherwise read a literal plus as a space.
         public func toString() -> String {
             var components = URLComponents()
             components.scheme = "nostrconnect"
             components.host = clientPubkey
-            
-            var queryItems: [URLQueryItem] = []
-            
-            for relay in relays {
-                queryItems.append(URLQueryItem(name: "relay", value: relay))
+
+            var queryItems: [URLQueryItem] = relays.map {
+                URLQueryItem(name: "relay", value: Self.percentEncodedQueryValue($0))
             }
-            
-            queryItems.append(URLQueryItem(name: "secret", value: secret))
-            
-            if let permissions = permissions {
-                queryItems.append(URLQueryItem(name: "perms", value: permissions))
+            queryItems.append(URLQueryItem(name: "secret", value: Self.percentEncodedQueryValue(secret)))
+
+            if let permissions {
+                queryItems.append(URLQueryItem(name: "perms", value: Self.percentEncodedQueryValue(permissions)))
             }
-            if let name = name {
-                queryItems.append(URLQueryItem(name: "name", value: name))
+            if let name {
+                queryItems.append(URLQueryItem(name: "name", value: Self.percentEncodedQueryValue(name)))
             }
-            if let url = url {
-                queryItems.append(URLQueryItem(name: "url", value: url))
+            if let url {
+                queryItems.append(URLQueryItem(name: "url", value: Self.percentEncodedQueryValue(url)))
             }
-            if let image = image {
-                queryItems.append(URLQueryItem(name: "image", value: image))
+            if let image {
+                queryItems.append(URLQueryItem(name: "image", value: Self.percentEncodedQueryValue(image)))
             }
-            
-            components.queryItems = queryItems
-            
+
+            components.percentEncodedQueryItems = queryItems
+
             return components.string ?? ""
         }
-        
+
         /// Parses a nostrconnect:// URI string.
+        ///
+        /// `name` is form-decoded, so both `My+Client` (the spec's own example,
+        /// and what `URLSearchParams` produces) and `My%20Client` read as
+        /// "My Client", while an escaped `%2B` stays a literal plus.
         public init?(from uri: String) {
             guard uri.hasPrefix("nostrconnect://") else { return nil }
-            
+
             guard let components = URLComponents(string: uri),
                   components.scheme == "nostrconnect",
                   let host = components.host,
                   host.count == 64 else {
                 return nil
             }
-            
+
             self.clientPubkey = host
-            
-            guard let queryItems = components.queryItems else { return nil }
-            
+
+            guard let queryItems = components.percentEncodedQueryItems else { return nil }
+
             var relays: [String] = []
             var secret: String?
             var permissions: String?
             var name: String?
             var url: String?
             var image: String?
-            
+
             for item in queryItems {
                 switch item.name {
                 case "relay":
-                    if let value = item.value, !value.isEmpty {
+                    if let value = item.value?.removingPercentEncoding, !value.isEmpty {
                         relays.append(value)
                     }
                 case "secret":
-                    secret = item.value
+                    secret = item.value?.removingPercentEncoding
                 case "perms":
-                    permissions = item.value
+                    permissions = item.value?.removingPercentEncoding
                 case "name":
-                    name = item.value
+                    name = item.value.flatMap(Self.formDecoded)
                 case "url":
-                    url = item.value
+                    url = item.value?.removingPercentEncoding
                 case "image":
-                    image = item.value
+                    image = item.value?.removingPercentEncoding
                 default:
                     break
                 }
             }
-            
+
             guard !relays.isEmpty, let secretValue = secret, !secretValue.isEmpty else {
                 return nil
             }
-            
+
             self.relays = relays
             self.secret = secretValue
             self.permissions = permissions
             self.name = name
             self.url = url
             self.image = image
+        }
+
+        /// Characters left bare in a serialized query value: everything the
+        /// query allows except the delimiters and `+`.
+        private static let queryValueAllowed = CharacterSet.urlQueryAllowed
+            .subtracting(CharacterSet(charactersIn: "+&="))
+
+        private static func percentEncodedQueryValue(_ value: String) -> String {
+            value.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) ?? value
+        }
+
+        /// Decodes a still-percent-encoded query value as a form field: `+`
+        /// becomes a space before percent-decoding, so `%2B` survives as `+`.
+        private static func formDecoded(_ encoded: String) -> String? {
+            encoded.replacingOccurrences(of: "+", with: " ").removingPercentEncoding
         }
     }
     
